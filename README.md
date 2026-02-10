@@ -1,6 +1,6 @@
 # Concurrency\_in\_Cpp
 
-Academic Project for ECS 251: Operating Systems
+Comparing the performance of threads and co-routines
 
 ## C++20 Toolchain Install
 
@@ -32,7 +32,7 @@ Run:
 
 ## Elastic Pool (Dynamic Threads + Global Queue)
 
-Added an elastic thread pool that grows/shrinks between a minimum and maximum
+Added an elastic thread pool that grows/shrinks between a minimum and a maximum
 thread count with an idle timeout.
 
 Files:

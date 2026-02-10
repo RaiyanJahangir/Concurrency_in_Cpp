@@ -48,3 +48,15 @@ Run:
 ```
 ./elastic_test
 ```
+
+## To start and run an experiment on CloudLab:
+
+Go to "Start an Experment" at the top left drop-down list
+1. Select a Profile (can just use the default profile)
+2. Parameterize - Number of Nodes (1 is ok), Select OS image (Newest Ubuntu), Optional physical node type (check Resource Availability to see which server is available)
+3. Finalize - Select the green cluster
+4. Schedule - Choose the date and time to get the server, and how many hours we can have the server
+
+Connect to the server through the shell using ssh commend given by the CloudLab once the experiment time starts
+
+Clone the repo and run the test on the server

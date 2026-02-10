@@ -15,7 +15,7 @@ Added an elastic thread pool that grows/shrinks between a minimum and maximum
 thread count with an idle timeout.
 
 Files:
-- thread_pool_elastic.h
+- thread_pool.h
 - thread_pool_elastic.cpp
 - test_elastic_pool.cpp
 

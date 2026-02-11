@@ -49,6 +49,29 @@ Run:
 ./elastic_test
 ```
 
+## Run the Matrix Multiplication Benchmark "matrix_mul_bench.cpp"
+
+```
+g++ -O3 -std=c++20 -pthread matrix_mul_bench.cpp \
+  thread_pool_classic_fixed_global.cpp \
+  thread_pool_elastic.cpp \
+  thread_pool_forkjoin.cpp \
+  -o matrix_mul_bench
+```
+Run the benchmark with one of the thread pool
+```
+./matrix_mul_bench classic 1024 64 8 1 3
+./matrix_mul_bench ws      1024 64 8 1 3
+./matrix_mul_bench elastic 1024 64 8 1 3
+```
+1st arg: number of the matrix dimension (N)
+2nd arg: block size (BS)
+3rd arg: number of threads
+4th arg: number of warmup runs (not timed)
+5th arg: number of timed runs (best and average reported)
+
+
+
 ## To start and run an experiment on CloudLab:
 
 Go to "Start an Experment" at the top left drop-down list

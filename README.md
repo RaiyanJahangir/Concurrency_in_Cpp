@@ -64,11 +64,11 @@ Run the benchmark with one of the thread pool
 ./matrix_mul_bench ws      1024 64 8 1 3
 ./matrix_mul_bench elastic 1024 64 8 1 3
 ```
-1st arg: number of the matrix dimension (N)
-2nd arg: block size (BS)
-3rd arg: number of threads
-4th arg: number of warmup runs (not timed)
-5th arg: number of timed runs (best and average reported)
+- 1st arg: number of the matrix dimension (N)
+- 2nd arg: block size (BS)
+- 3rd arg: number of threads
+- 4th arg: number of warmup runs (not timed)
+- 5th arg: number of timed runs (best and average reported)
 
 
 

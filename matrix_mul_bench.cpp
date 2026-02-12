@@ -2,9 +2,7 @@
 To compile and run this benchmark:
 
 g++ -O3 -std=c++20 -pthread matrix_mul_bench.cpp \
-  thread_pool_classic_fixed_global.cpp \
-  thread_pool_elastic.cpp \
-  thread_pool_forkjoin.cpp \
+  thread_pool.cpp \
   -o matrix_mul_bench
 
 ./matrix_mul_bench classic 1024 64 8 1 3
@@ -127,11 +125,12 @@ static double checksum_sparse(const std::vector<double>& C) {
 static void usage(const char* prog) {
     std::cerr
         << "Usage:\n  " << prog
-        << " <pool: classic|elastic|ws> <N> <BS> <threads> <warmup> <reps>\n\n"
+        << " <pool: classic|elastic|ws|advws> <N> <BS> <threads> <warmup> <reps>\n\n"
         << "Examples:\n"
         << "  " << prog << " classic 1024 64 8 1 3\n"
         << "  " << prog << " ws      1024 64 8 1 3\n"
-        << "  " << prog << " elastic 1024 64 4 1 3   (elastic uses min=threads, max=2*threads)\n";
+        << "  " << prog << " elastic 1024 64 4 1 3   (elastic uses min=threads, max=2*threads)\n"
+        << "  " << prog << " advws   1024 64 4 1 3   (advanced elastic stealing)\n";
 }
 
 int main(int argc, char** argv) {
@@ -179,11 +178,18 @@ int main(int argc, char** argv) {
         ThreadPool pool(threads);
         run_pool(pool);
     } else if (pool_kind == "ws") {
-        WorkStealingThreadPool pool(threads);
+        ThreadPool pool(threads, ThreadPool::PoolKind::WorkStealing);
         run_pool(pool);
     } else if (pool_kind == "elastic") {
         // Simple policy: min=threads, max=2*threads
-        ElasticThreadPool pool(threads, std::max<size_t>(1, threads));
+        ThreadPool pool(threads, std::max<size_t>(threads * 2, size_t{1}));
+        run_pool(pool);
+    } else if (pool_kind == "advws") {
+        ThreadPool pool(
+            threads,
+            std::max<size_t>(threads * 2, size_t{1}),
+            ThreadPool::PoolKind::AdvancedElasticStealing,
+            std::chrono::milliseconds(200));
         run_pool(pool);
     } else {
         std::cerr << "Unknown pool kind: " << pool_kind << "\n";

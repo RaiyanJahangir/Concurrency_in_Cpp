@@ -1,5 +1,5 @@
 // To run this test:
-// g++ -O2 -std=c++20 -pthread test_forkjoin_workstealing.cpp thread_pool_forkjoin.cpp -o ws_test
+// g++ -O2 -std=c++20 -pthread test_forkjoin_workstealing.cpp thread_pool.cpp -o ws_test
 // ./ws_test
 
 #include "thread_pool.h"
@@ -11,7 +11,7 @@
 
 int main() {
     constexpr size_t NUM_THREADS = 4;
-    WorkStealingThreadPool pool(NUM_THREADS);
+    ThreadPool pool(NUM_THREADS, ThreadPool::PoolKind::WorkStealing);
 
     std::atomic<int> counter{0};
 
@@ -32,4 +32,3 @@ int main() {
     // Destructor drains all queued tasks.
     return 0;
 }
-

@@ -7,7 +7,7 @@
 int main() {
     using namespace std::chrono_literals;
 
-    ElasticThreadPool pool(2, 8, 150ms);
+    ThreadPool pool(2, 8, 150ms);
 
     for (int i = 0; i < 24; ++i) {
         pool.submit([i]() {

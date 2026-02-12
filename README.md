@@ -1,6 +1,6 @@
 # Concurrency\_in\_Cpp
 
-Comparing the performance of threads and co-routines
+Comparing the performance of threads and coroutines in C++
 
 ## C++20 Toolchain Install
 

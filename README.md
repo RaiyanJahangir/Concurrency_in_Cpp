@@ -110,3 +110,68 @@ Go to "Start an Experment" at the top left drop-down list
 Connect to the server through the shell using ssh commend given by the CloudLab once the experiment time starts
 
 Clone the repo and run the test on the server
+
+## Run the Fibonacci Benchmark "fib_bench.cpp"
+
+```
+g++ -O3 -std=c++20 -pthread fib_bench.cpp \
+  thread_pool.cpp \
+  -o fib_bench
+```
+Run the benchmark with one of the thread pool
+```
+./fib_bench classic 44 8 1 3
+./fib_bench ws      44 8 1 3
+./fib_bench elastic 44 8 1 3
+./fib_bench advws   44 8 1 3
+```
+- 1st arg: Fibonacci index per task (`fib_n`)
+- 2nd arg: number of threads
+- 3rd arg: number of warmup runs (not timed)
+- 4th arg: number of timed runs (best and average reported)
+- 5th optional arg: number of tasks submitted per run (default = threads)
+- 6th optional arg: recursion split threshold (default = 32)
+
+## Run the Single-Fibonacci Parallel Benchmark "fib_single_bench.cpp"
+
+This benchmark parallelizes one Fibonacci computation tree (instead of running many independent Fibonacci tasks).
+
+```
+g++ -O3 -std=c++20 -pthread fib_single_bench.cpp \
+  thread_pool.cpp \
+  -o fib_single_bench
+```
+Run the benchmark with one of the thread pool
+```
+./fib_single_bench classic 44 8 1 3
+./fib_single_bench ws      44 8 1 3
+./fib_single_bench elastic 44 8 1 3
+./fib_single_bench advws   44 8 1 3
+```
+- 1st arg: Fibonacci index (`fib_n`)
+- 2nd arg: number of threads
+- 3rd arg: number of warmup runs (not timed)
+- 4th arg: number of timed runs (best and average reported)
+- 5th optional arg: recursion split threshold for task spawning (default = 30)
+
+## Run the Fast-Doubling Fibonacci Benchmark "fib_fast_bench.cpp"
+
+This benchmark uses the fast doubling Fibonacci algorithm (`O(log n)`) per task and compares the 4 pool variants on many independent tasks.
+
+```
+g++ -O3 -std=c++20 -pthread fib_fast_bench.cpp \
+  thread_pool.cpp \
+  -o fib_fast_bench
+```
+Run the benchmark with one of the thread pool
+```
+./fib_fast_bench classic 90 8 1 3
+./fib_fast_bench ws      90 8 1 3
+./fib_fast_bench elastic 90 8 1 3
+./fib_fast_bench advws   90 8 1 3
+```
+- 1st arg: Fibonacci index (`fib_n`, max 93 for `uint64_t`)
+- 2nd arg: number of threads
+- 3rd arg: number of warmup runs (not timed)
+- 4th arg: number of timed runs (best and average reported)
+- 5th optional arg: number of tasks submitted per run (default = threads)

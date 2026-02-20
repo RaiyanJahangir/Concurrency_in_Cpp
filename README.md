@@ -175,3 +175,53 @@ Run the benchmark with one of the thread pool
 - 3rd arg: number of warmup runs (not timed)
 - 4th arg: number of timed runs (best and average reported)
 - 5th optional arg: number of tasks submitted per run (default = threads)
+
+
+## Mixed Workload Benchmark
+
+This benchmark evaluates different ThreadPool implementations under a mixed workload:
+```
+CPU work → blocking I/O wait → CPU work
+```
+### How to run the benchmark
+
+Compile the HTTP server:
+```
+g++ -O2 -std=c++20 -pthread mini_http_server.cpp thread_pool.cpp -o mini_http_server
+```
+
+Compile the benchmark client:
+```
+g++ -O2 -std=c++20 -pthread mixed_bench.cpp -o mixed_bench
+```
+
+### Running the Server
+
+In one terminal, run the server with one of the thread pools:
+```
+./mini_http_server classic 8080 8
+./mini_http_server ws      8080 8
+./mini_http_server elastic 8080 4 32
+./mini_http_server advws   8080 4 32 50
+```
+### Running the Benchmark
+
+In another terminal:
+```
+./mixed_bench 127.0.0.1 8080 200 5000 200 32 10
+```
+The corresponding arguments are: host port cpu1_us io_us cpu2_us concurrency duration_seconds
+
+Output Summary:
+- Concurrency: Number of simultaneous clients.
+- Throughput (req/s): Requests completed per second (system capacity).
+- Latency (avg, p50, p95, p99): Time per request.
+- p50 = median
+- p95/p99 = tail latency (stability under load)
+
+How to Read It:
+- Throughput rising + low latency → good scaling.
+- Throughput plateaus + latency increases → pool is saturated.
+- p95/p99 much higher than p50 → queueing and overload.
+- All latencies high and similar → fully overloaded system.
+

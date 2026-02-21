@@ -178,42 +178,43 @@ Run the benchmark with one of the thread pool
 
 ## Run All CPU-Bound Workloads and Save CSV
 
-Use `run_cpu_workloads.cpp` to run all CPU workloads (`matrix`, `fib`, `fib_single`, `fib_fast`)
-across all pool variants (`classic`, `ws`, `elastic`, `advws`) with multiple trials and export one CSV.
+Use `run_cpu_workloads.cpp` to build a C++ runner that executes all CPU workloads
+(`matrix`, `fib`, `fib_single`, `fib_fast`) across all pool variants
+(`classic`, `ws`, `elastic`, `advws`) with multiple trials and exports one CSV.
 
-When to run this script:
+When to run this C++ runner:
 - After changing `thread_pool.cpp/.h` or any CPU benchmark file.
 - Before collecting final report numbers/graphs.
 - On an otherwise idle machine for more stable measurements.
 
-Build the runner:
+Build the C++ runner from source:
 ```bash
-$ cd Concurrency_in_Cpp
-$ g++ -O2 -std=c++20 run_cpu_workloads.cpp -o run_cpu_workloads
+cd Concurrency_in_Cpp
+g++ -O2 -std=c++20 -pthread run_cpu_workloads.cpp -o run_cpu_workloads
 ```
 
-Run with defaults:
+Run the C++ executable with defaults:
 ```bash
-$ ./run_cpu_workloads
+./run_cpu_workloads
 ```
 This writes a timestamped CSV in `results/`.
 
 Run with explicit output path and trial count:
 ```bash
-$ ./run_cpu_workloads results/cpu_metrics.csv 5
+./run_cpu_workloads results/cpu_metrics.csv 5
 ```
 - 1st positional arg: output CSV path
 - 2nd positional arg: number of trials per `(workload, pool)` combination
 
 Optional: enable `perf` metrics if your system blocks non-root perf access:
 ```bash
-$ sudo sysctl -w kernel.perf_event_paranoid=-1
-$ ./run_cpu_workloads results/cpu_metrics_perf.csv 5
+sudo sysctl -w kernel.perf_event_paranoid=-1
+./run_cpu_workloads results/cpu_metrics_perf.csv 5
 ```
 
 Run with custom benchmark parameters (proposal-style example):
 ```bash
-$ TRIALS=5 THREADS=8 WARMUP=1 REPS=3 \
+  TRIALS=5 THREADS=8 WARMUP=1 REPS=3 \
   MATRIX_N=1024 MATRIX_BS=64 \
   FIB_N=44 FIB_TASKS=8 FIB_SPLIT_THRESHOLD=32 \
   FIB_SINGLE_N=44 FIB_SINGLE_SPLIT_THRESHOLD=30 \

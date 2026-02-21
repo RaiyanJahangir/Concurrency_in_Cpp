@@ -1,0 +1,44 @@
+# Build/output directories
+/build/
+
+
+# Object and binary artifacts
+*.o
+*.obj
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Local generated executables (root)
+/adv_elastic_test
+/classic_test
+/elastic_test
+/fib_bench
+/fib_fast_bench
+/fib_single_bench
+/matrix_mul_bench
+/mini_http_server
+/mini_http_server_new
+/mixed_bench
+/mixed_bench_new
+/pool_test
+/ws_test
+
+/run_cpu_workloads
+/run_cpu_workloads.sh
+
+
+# Generated logs/outputs
+*.log
+*.out
+
+# Local extracted/intermediate files
+/ECS_251_Project_Proposal_extracted.txt
+
+# Editor/OS noise
+.DS_Store
+*.swp
+*.swo
+*~

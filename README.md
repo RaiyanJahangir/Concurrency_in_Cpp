@@ -176,6 +176,66 @@ Run the benchmark with one of the thread pool
 - 4th arg: number of timed runs (best and average reported)
 - 5th optional arg: number of tasks submitted per run (default = threads)
 
+## Run All CPU-Bound Workloads and Save CSV
+
+Use `run_cpu_workloads.cpp` to run all CPU workloads (`matrix`, `fib`, `fib_single`, `fib_fast`)
+across all pool variants (`classic`, `ws`, `elastic`, `advws`) with multiple trials and export one CSV.
+
+When to run this script:
+- After changing `thread_pool.cpp/.h` or any CPU benchmark file.
+- Before collecting final report numbers/graphs.
+- On an otherwise idle machine for more stable measurements.
+
+Build the runner:
+```bash
+$ cd Concurrency_in_Cpp
+$ g++ -O2 -std=c++20 run_cpu_workloads.cpp -o run_cpu_workloads
+```
+
+Run with defaults:
+```bash
+$ ./run_cpu_workloads
+```
+This writes a timestamped CSV in `results/`.
+
+Run with explicit output path and trial count:
+```bash
+$ ./run_cpu_workloads results/cpu_metrics.csv 5
+```
+- 1st positional arg: output CSV path
+- 2nd positional arg: number of trials per `(workload, pool)` combination
+
+Optional: enable `perf` metrics if your system blocks non-root perf access:
+```bash
+$ sudo sysctl -w kernel.perf_event_paranoid=-1
+$ ./run_cpu_workloads results/cpu_metrics_perf.csv 5
+```
+
+Run with custom benchmark parameters (proposal-style example):
+```bash
+$ TRIALS=5 THREADS=8 WARMUP=1 REPS=3 \
+  MATRIX_N=1024 MATRIX_BS=64 \
+  FIB_N=44 FIB_TASKS=8 FIB_SPLIT_THRESHOLD=32 \
+  FIB_SINGLE_N=44 FIB_SINGLE_SPLIT_THRESHOLD=30 \
+  FIB_FAST_N=90 FIB_FAST_TASKS=8 \
+  ./run_cpu_workloads results/cpu_metrics.csv
+```
+
+Parameter meanings:
+- `TRIALS`: repeated runs of each workload/pool pair.
+- `THREADS`: worker threads used by each pool.
+- `WARMUP`: untimed warmup runs passed to each benchmark.
+- `REPS`: timed runs passed to each benchmark (used for per-run timing stats).
+- `MATRIX_N`, `MATRIX_BS`: matrix benchmark size and block size.
+- `FIB_N`, `FIB_TASKS`, `FIB_SPLIT_THRESHOLD`: batch Fibonacci benchmark parameters.
+- `FIB_SINGLE_N`, `FIB_SINGLE_SPLIT_THRESHOLD`: single-tree Fibonacci benchmark parameters.
+- `FIB_FAST_N`, `FIB_FAST_TASKS`: fast-doubling Fibonacci benchmark parameters.
+
+CSV includes:
+- Application metrics: per-run times, p50/p95/p99 of run times, best/avg time, throughput, checksum fields.
+- OS metrics from `/usr/bin/time`: elapsed/user/sys time, CPU%, max RSS, context switches.
+- `perf` metrics (when available): task-clock, context-switches, cpu-migrations, cycles, instructions, cache-misses.
+
 
 ## Mixed Workload Benchmark
 
@@ -224,4 +284,3 @@ How to Read It:
 - Throughput plateaus + latency increases → pool is saturated.
 - p95/p99 much higher than p50 → queueing and overload.
 - All latencies high and similar → fully overloaded system.
-

@@ -77,6 +77,25 @@ Run:
 ./adv_elastic_test
 ```
 
+## Unit-Style ThreadPool Tests (Class-Based)
+
+Added `test_thread_pool_unit.cpp`, a class-based test executable with assertion-style checks for:
+- constructor validation
+- classic fixed pool task completion
+- work-stealing nested submissions
+- elastic global burst processing
+- advanced elastic stealing nested workload completion
+
+Build:
+```
+g++ -std=c++20 -O2 -pthread thread_pool.cpp test_thread_pool_unit.cpp -o thread_pool_unit_test
+```
+Run:
+```
+./thread_pool_unit_test
+```
+The executable prints `[PASS]/[FAIL]` per test and returns non-zero on failure.
+
 ## Run the Matrix Multiplication Benchmark "matrix_mul_bench.cpp"
 
 ```

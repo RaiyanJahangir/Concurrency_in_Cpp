@@ -88,13 +88,32 @@ Added `test_thread_pool_unit.cpp`, a class-based test executable with assertion-
 
 Build:
 ```
-g++ -std=c++20 -O2 -pthread thread_pool.cpp test_thread_pool_unit.cpp -o thread_pool_unit_test
+g++ -std=c++20 -O1 -pthread thread_pool.cpp test_thread_pool_unit.cpp -o thread_pool_unit_test
 ```
 Run:
 ```
 ./thread_pool_unit_test
 ```
 The executable prints `[PASS]/[FAIL]` per test and returns non-zero on failure.
+
+## Unit Tests for Matrix and Fibonacci Kernels
+
+Added `test_matrix_fib_unit.cpp`, a unit-style test executable that validates:
+- matrix multiplication correctness (known 2x2 case)
+- blocked parallel matrix multiplication against sequential reference
+- Fibonacci correctness for iterative, recursive-threshold, and fast-doubling variants
+- parallel Fibonacci batch checksum with thread-pool execution
+
+Build:
+```
+g++ -std=c++20 -O1 -pthread thread_pool.cpp test_matrix_fib_unit.cpp -o matrix_fib_unit_test
+```
+Run:
+```
+./matrix_fib_unit_test
+```
+
+Note: if your GCC version hits an internal compiler error with `-O2`, use `-O1` or `-O2 -fno-cprop-registers`.
 
 ## Run the Matrix Multiplication Benchmark "matrix_mul_bench.cpp"
 

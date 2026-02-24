@@ -113,6 +113,23 @@ Run:
 ./matrix_fib_unit_test
 ```
 
+## Unit Tests for Mini HTTP Server
+
+Added `test_mini_http_server_unit.cpp`, a unit-style test executable that validates:
+- request parsing helpers (`parse_int`, query parsing, request-target parsing)
+- HTTP response formatting (status/content-type/content-length/body)
+- route handling for invalid method (`400`), unknown path (`404`), and `/work` (`200` JSON)
+
+Build:
+```
+g++ -std=c++20 -O2 -pthread test_mini_http_server_unit.cpp thread_pool.cpp -o test_mini_http_server_unit
+```
+Run:
+```
+./test_mini_http_server_unit
+```
+The executable prints `[PASS]/[FAIL]` per test and returns non-zero on failure.
+
 Note: if your GCC version hits an internal compiler error with `-O2`, use `-O1` or `-O2 -fno-cprop-registers`.
 
 ## Run the Matrix Multiplication Benchmark "matrix_mul_bench.cpp"

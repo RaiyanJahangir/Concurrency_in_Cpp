@@ -340,3 +340,30 @@ How to Read It:
 - Throughput plateaus + latency increases → pool is saturated.
 - p95/p99 much higher than p50 → queueing and overload.
 - All latencies high and similar → fully overloaded system.
+
+### Install pref and wrk in CloudLab server
+
+#### pref
+```
+sudo apt install linux-tools-standard-WSL2 linux-cloud-tools-standard-WSL2
+```
+To temporarily have permission to use pref:
+```
+sudo sh -c 'echo -1 > /proc/sys/kernel/perf_event_paranoid'
+```
+To run pref:
+```
+perf stat ./your_program
+```
+like:
+```
+perf stat ./matrix_mul_bench advws 8000 64 8 1 3
+```
+#### wrk
+To install wrk:
+```
+sudo apt update
+sudo apt install wrk
+```
+
+

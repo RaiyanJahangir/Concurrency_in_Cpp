@@ -18,6 +18,7 @@ g++ -O3 -std=c++20 -pthread matrix_mul_bench.cpp \
 
 
 #include "thread_pool.h"
+#include "coro_runtime.h"
 
 #include <algorithm>
 #include <atomic>
@@ -25,6 +26,7 @@ g++ -O3 -std=c++20 -pthread matrix_mul_bench.cpp \
 #include <cmath>
 #include <condition_variable>
 #include <cstdint>
+#include <exception>
 #include <iostream>
 #include <mutex>
 #include <random>
@@ -114,6 +116,78 @@ static double matmul_parallel(Pool& pool,
     return seconds_since(t0);
 }
 
+static coro::DetachedTask matmul_tile_coro(size_t N,
+                                           size_t BS,
+                                           const std::vector<double>& A,
+                                           const std::vector<double>& B,
+                                           std::vector<double>& C,
+                                           size_t i0,
+                                           size_t j0,
+                                           coro::PoolScheduler sched,
+                                           std::atomic<size_t>& done,
+                                           const size_t total_tiles,
+                                           std::mutex& m,
+                                           std::condition_variable& cv,
+                                           std::exception_ptr& ep,
+                                           std::mutex& ep_m) {
+    co_await sched.schedule();
+    try {
+        matmul_tile(N, BS, A, B, C, i0, j0);
+    } catch (...) {
+        std::lock_guard<std::mutex> lk(ep_m);
+        if (!ep) {
+            ep = std::current_exception();
+        }
+    }
+
+    const size_t finished = done.fetch_add(1, std::memory_order_acq_rel) + 1;
+    if (finished == total_tiles) {
+        std::lock_guard<std::mutex> lk(m);
+        cv.notify_one();
+    }
+}
+
+static double matmul_coroutine_parallel(ThreadPool& pool,
+                                        size_t N,
+                                        size_t BS,
+                                        const std::vector<double>& A,
+                                        const std::vector<double>& B,
+                                        std::vector<double>& C) {
+    std::fill(C.begin(), C.end(), 0.0);
+
+    const size_t tiles_i = (N + BS - 1) / BS;
+    const size_t tiles_j = (N + BS - 1) / BS;
+    const size_t total_tiles = tiles_i * tiles_j;
+
+    std::atomic<size_t> done{0};
+    std::mutex m;
+    std::condition_variable cv;
+    std::exception_ptr ep;
+    std::mutex ep_m;
+    coro::PoolScheduler sched(pool);
+
+    const auto t0 = Clock::now();
+
+    for (size_t ti = 0; ti < tiles_i; ++ti) {
+        for (size_t tj = 0; tj < tiles_j; ++tj) {
+            const size_t i0 = ti * BS;
+            const size_t j0 = tj * BS;
+            matmul_tile_coro(N, BS, A, B, C, i0, j0, sched, done, total_tiles, m, cv, ep, ep_m);
+        }
+    }
+
+    {
+        std::unique_lock<std::mutex> lk(m);
+        cv.wait(lk, [&] { return done.load(std::memory_order_acquire) == total_tiles; });
+    }
+
+    if (ep) {
+        std::rethrow_exception(ep);
+    }
+
+    return seconds_since(t0);
+}
+
 static double checksum_sparse(const std::vector<double>& C) {
     // prevent “optimize away” & keep O(N) small
     double s = 0.0;
@@ -130,7 +204,8 @@ static void usage(const char* prog) {
         << "  " << prog << " classic 1024 64 8 1 3\n"
         << "  " << prog << " ws      1024 64 8 1 3\n"
         << "  " << prog << " elastic 1024 64 4 1 3   (elastic uses min=threads, max=2*threads)\n"
-        << "  " << prog << " advws   1024 64 4 1 3   (advanced elastic stealing)\n";
+        << "  " << prog << " advws   1024 64 4 1 3   (advanced elastic stealing)\n"
+        << "  " << prog << " coro    1024 64 8 1 3   (coroutine tiles on fixed pool)\n";
 }
 
 int main(int argc, char** argv) {
@@ -191,6 +266,20 @@ int main(int argc, char** argv) {
             ThreadPool::PoolKind::AdvancedElasticStealing,
             std::chrono::milliseconds(200));
         run_pool(pool);
+    } else if (pool_kind == "coro") {
+        ThreadPool pool(threads);
+        for (int i = 0; i < warmup; ++i) {
+            (void)matmul_coroutine_parallel(pool, N, BS, A, B, C);
+        }
+        for (int r = 0; r < reps; ++r) {
+            const double t = matmul_coroutine_parallel(pool, N, BS, A, B, C);
+            best = std::min(best, t);
+            sum += t;
+            std::cout << "Run " << r << ": " << t << " s\n";
+        }
+        std::cout << "Best: " << best << " s\n";
+        std::cout << "Avg : " << (sum / reps) << " s\n";
+        std::cout << "Checksum: " << checksum_sparse(C) << "\n";
     } else {
         std::cerr << "Unknown pool kind: " << pool_kind << "\n";
         usage(argv[0]);

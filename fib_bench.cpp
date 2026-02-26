@@ -1,10 +1,12 @@
 #include "thread_pool.h"
+#include "coro_runtime.h"
 
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstdint>
+#include <exception>
 #include <functional>
 #include <iostream>
 #include <mutex>
@@ -75,15 +77,76 @@ static double fib_parallel_batch(Pool& pool,
     return seconds_since(t0);
 }
 
+static coro::DetachedTask fib_task_coro(unsigned n,
+                                        unsigned split_threshold,
+                                        size_t idx,
+                                        std::vector<uint64_t>& out,
+                                        coro::PoolScheduler sched,
+                                        std::atomic<size_t>& done,
+                                        const size_t tasks,
+                                        std::mutex& m,
+                                        std::condition_variable& cv,
+                                        std::exception_ptr& ep,
+                                        std::mutex& ep_m) {
+    co_await sched.schedule();
+    try {
+        out[idx] = fib_task(n, split_threshold);
+    } catch (...) {
+        std::lock_guard<std::mutex> lk(ep_m);
+        if (!ep) {
+            ep = std::current_exception();
+        }
+    }
+
+    const size_t finished = done.fetch_add(1, std::memory_order_acq_rel) + 1;
+    if (finished == tasks) {
+        std::lock_guard<std::mutex> lk(m);
+        cv.notify_one();
+    }
+}
+
+static double fib_coroutine_batch(ThreadPool& pool,
+                                  unsigned n,
+                                  unsigned split_threshold,
+                                  size_t tasks,
+                                  uint64_t& checksum_out) {
+    std::atomic<size_t> done{0};
+    std::mutex m;
+    std::condition_variable cv;
+    std::vector<uint64_t> out(tasks, 0);
+    std::exception_ptr ep;
+    std::mutex ep_m;
+    coro::PoolScheduler sched(pool);
+
+    const auto t0 = Clock::now();
+
+    for (size_t i = 0; i < tasks; ++i) {
+        fib_task_coro(n, split_threshold, i, out, sched, done, tasks, m, cv, ep, ep_m);
+    }
+
+    {
+        std::unique_lock<std::mutex> lk(m);
+        cv.wait(lk, [&] { return done.load(std::memory_order_acquire) == tasks; });
+    }
+
+    if (ep) {
+        std::rethrow_exception(ep);
+    }
+
+    checksum_out = std::accumulate(out.begin(), out.end(), uint64_t{0});
+    return seconds_since(t0);
+}
+
 static void usage(const char* prog) {
     std::cerr
         << "Usage:\n  " << prog
-        << " <pool: classic|elastic|ws|advws> <fib_n> <threads> <warmup> <reps> [tasks] [split_threshold]\n\n"
+        << " <pool: classic|elastic|ws|advws|coro> <fib_n> <threads> <warmup> <reps> [tasks] [split_threshold]\n\n"
         << "Examples:\n"
         << "  " << prog << " classic 44 8 1 3\n"
         << "  " << prog << " ws      44 8 1 3\n"
         << "  " << prog << " elastic 44 8 1 3 8 32\n"
-        << "  " << prog << " advws   44 8 1 3 8 32\n\n"
+        << "  " << prog << " advws   44 8 1 3 8 32\n"
+        << "  " << prog << " coro    44 8 1 3 8 32\n\n"
         << "Defaults:\n"
         << "  tasks = threads\n"
         << "  split_threshold = 32 (switch to iterative fib)\n";
@@ -157,6 +220,20 @@ int main(int argc, char** argv) {
                 ThreadPool::PoolKind::AdvancedElasticStealing,
                 std::chrono::milliseconds(200));
             run_pool(pool);
+        } else if (pool_kind == "coro") {
+            ThreadPool pool(threads);
+            for (int i = 0; i < warmup; ++i) {
+                uint64_t discard = 0;
+                (void)fib_coroutine_batch(pool, fib_n, split_threshold, tasks, discard);
+            }
+            for (int r = 0; r < reps; ++r) {
+                uint64_t checksum = 0;
+                const double t = fib_coroutine_batch(pool, fib_n, split_threshold, tasks, checksum);
+                best = std::min(best, t);
+                sum += t;
+                last_checksum = checksum;
+                std::cout << "Run " << r << ": " << t << " s\n";
+            }
         } else {
             std::cerr << "Unknown pool kind: " << pool_kind << "\n";
             usage(argv[0]);

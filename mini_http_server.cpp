@@ -31,6 +31,7 @@ Notes:
 */
 
 #include "thread_pool.h"
+#include "coro_runtime.h"
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
@@ -237,6 +238,68 @@ static void handle_connection(int client_fd) {
     ::close(client_fd);
 }
 
+static coro::DetachedTask handle_connection_coro(int client_fd, coro::PoolScheduler sched) {
+    co_await sched.schedule();
+    try {
+        std::string req;
+        if (!read_until_headers_end(client_fd, req)) {
+            ::close(client_fd);
+            co_return;
+        }
+
+        std::string_view method, target;
+        if (!parse_request_target(req, method, target)) {
+            auto resp = make_http_response(400, "text/plain", "Bad Request\n");
+            (void)send_all(client_fd, resp.data(), resp.size());
+            ::close(client_fd);
+            co_return;
+        }
+
+        if (method != "GET") {
+            auto resp = make_http_response(400, "text/plain", "GET only\n");
+            (void)send_all(client_fd, resp.data(), resp.size());
+            ::close(client_fd);
+            co_return;
+        }
+
+        const bool is_work = (target.rfind("/work", 0) == 0);
+        if (!is_work) {
+            auto resp = make_http_response(404, "text/plain",
+                                           "Try /work?cpu1=200&io=5000&cpu2=200 (microseconds)\n");
+            (void)send_all(client_fd, resp.data(), resp.size());
+            ::close(client_fd);
+            co_return;
+        }
+
+        int cpu1_us = get_q_int(target, "cpu1", 200);
+        int io_us = get_q_int(target, "io", 5000);
+        int cpu2_us = get_q_int(target, "cpu2", 200);
+
+        const uint64_t t0 = now_ns();
+
+        burn_cpu_us(cpu1_us);
+        co_await coro::sleep_for(std::chrono::microseconds(io_us), sched);
+        burn_cpu_us(cpu2_us);
+
+        const uint64_t total_us = (now_ns() - t0) / 1000ull;
+
+        std::ostringstream body;
+        body << "{";
+        body << "\"endpoint\":\"/work\",";
+        body << "\"cpu1_us\":" << cpu1_us << ',';
+        body << "\"io_us\":" << io_us << ',';
+        body << "\"cpu2_us\":" << cpu2_us << ',';
+        body << "\"total_us\":" << total_us;
+        body << "}\n";
+
+        auto resp = make_http_response(200, "application/json", body.str());
+        (void)send_all(client_fd, resp.data(), resp.size());
+        ::close(client_fd);
+    } catch (...) {
+        ::close(client_fd);
+    }
+}
+
 static int make_listen_socket(uint16_t port) {
     int fd = ::socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) {
@@ -281,6 +344,10 @@ static ThreadPool make_pool_from_args(int argc, char** argv) {
         size_t threads = (size_t)std::stoul(argv[3]);
         return ThreadPool(threads);
     }
+    if (kind == "coro") {
+        size_t threads = (size_t)std::stoul(argv[3]);
+        return ThreadPool(threads);
+    }
     if (kind == "ws") {
         size_t threads = (size_t)std::stoul(argv[3]);
         return ThreadPool(threads, ThreadPool::PoolKind::WorkStealing);
@@ -306,7 +373,7 @@ static ThreadPool make_pool_from_args(int argc, char** argv) {
                           std::chrono::milliseconds(idle_ms));
     }
 
-    throw std::runtime_error("unknown kind: " + kind + " (use classic/ws/elastic/advws)");
+    throw std::runtime_error("unknown kind: " + kind + " (use classic/ws/elastic/advws/coro)");
 }
 
 int main(int argc, char** argv) {
@@ -314,14 +381,17 @@ int main(int argc, char** argv) {
         if (argc < 4) {
             std::cerr << "Usage:\n"
                       << "  ./mini_http_server classic <port> <threads>\n"
+                      << "  ./mini_http_server coro    <port> <threads>\n"
                       << "  ./mini_http_server ws      <port> <threads>\n"
                       << "  ./mini_http_server elastic <port> <min_threads> <max_threads>\n"
                       << "  ./mini_http_server advws   <port> <min_threads> <max_threads> <idle_ms>\n";
             return 2;
         }
 
+        const std::string kind = argv[1];
         const uint16_t port = (uint16_t)std::stoi(argv[2]);
         ThreadPool pool = make_pool_from_args(argc, argv);
+        coro::PoolScheduler sched(pool);
 
         int listen_fd = make_listen_socket(port);
         std::cout << "Listening on 0.0.0.0:" << port
@@ -336,7 +406,11 @@ int main(int argc, char** argv) {
                 continue;
             }
 
-            pool.submit([cfd] { handle_connection(cfd); });
+            if (kind == "coro") {
+                handle_connection_coro(cfd, sched);
+            } else {
+                pool.submit([cfd] { handle_connection(cfd); });
+            }
         }
 
     } catch (const std::exception& e) {

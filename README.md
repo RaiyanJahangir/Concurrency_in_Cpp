@@ -77,6 +77,34 @@ Run:
 ./adv_elastic_test
 ```
 
+## Coroutine Variants (Mirroring 4 Pool Types)
+
+Added `coroutine_variants.cpp`, a C++20 coroutine showcase that runs four coroutine patterns on top of the same 4 execution modes:
+- `classic` (fixed threads + global queue)
+- `ws` (fixed threads + work stealing)
+- `elastic` (dynamic threads + global queue)
+- `advws` (dynamic threads + work stealing)
+
+The executable demonstrates:
+- value-returning coroutine compute (`sum_squares`)
+- cooperative async Fibonacci (`fib`)
+- staged coroutine pipeline transform/reduce
+- detached fire-and-forget coroutines with completion barrier
+
+Build:
+```
+g++ -std=c++20 -O2 -pthread coroutine_variants.cpp thread_pool.cpp -o coroutine_variants
+```
+Run:
+```
+./coroutine_variants classic 8
+./coroutine_variants ws 8
+./coroutine_variants elastic 8
+./coroutine_variants advws 8
+```
+- 1st arg: runtime mode (`classic | ws | elastic | advws`)
+- 2nd arg: max thread count (`threads > 0`)
+
 ## Unit-Style ThreadPool Tests (Class-Based)
 
 Added `test_thread_pool_unit.cpp`, a class-based test executable with assertion-style checks for:
@@ -145,6 +173,7 @@ Run the benchmark with one of the thread pool
 ./matrix_mul_bench ws      1024 64 8 1 3
 ./matrix_mul_bench elastic 1024 64 8 1 3
 ./matrix_mul_bench advws   1024 64 8 1 3
+./matrix_mul_bench coro    1024 64 8 1 3
 ```
 - 1st arg: number of the matrix dimension (N)
 - 2nd arg: block size (BS)
@@ -179,6 +208,7 @@ Run the benchmark with one of the thread pool
 ./fib_bench ws      44 8 1 3
 ./fib_bench elastic 44 8 1 3
 ./fib_bench advws   44 8 1 3
+./fib_bench coro    44 8 1 3
 ```
 - 1st arg: Fibonacci index per task (`fib_n`)
 - 2nd arg: number of threads
@@ -202,6 +232,7 @@ Run the benchmark with one of the thread pool
 ./fib_single_bench ws      44 8 1 3
 ./fib_single_bench elastic 44 8 1 3
 ./fib_single_bench advws   44 8 1 3
+./fib_single_bench coro    44 8 1 3
 ```
 - 1st arg: Fibonacci index (`fib_n`)
 - 2nd arg: number of threads
@@ -224,6 +255,7 @@ Run the benchmark with one of the thread pool
 ./fib_fast_bench ws      90 8 1 3
 ./fib_fast_bench elastic 90 8 1 3
 ./fib_fast_bench advws   90 8 1 3
+./fib_fast_bench coro    90 8 1 3
 ```
 - 1st arg: Fibonacci index (`fib_n`, max 93 for `uint64_t`)
 - 2nd arg: number of threads
@@ -316,6 +348,7 @@ g++ -O2 -std=c++20 -pthread mixed_bench.cpp -o mixed_bench
 In one terminal, run the server with one of the thread pools:
 ```
 ./mini_http_server classic 8080 8
+./mini_http_server coro    8080 8
 ./mini_http_server ws      8080 8
 ./mini_http_server elastic 8080 4 32
 ./mini_http_server advws   8080 4 32 50
@@ -365,5 +398,3 @@ To install wrk:
 sudo apt update
 sudo apt install wrk
 ```
-
-

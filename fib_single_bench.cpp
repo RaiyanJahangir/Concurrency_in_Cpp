@@ -20,6 +20,7 @@ Args:
 */
 
 #include "thread_pool.h"
+#include "coro_runtime.h"
 
 #include <algorithm>
 #include <atomic>
@@ -136,6 +137,91 @@ static uint64_t fib_single_parallel(Pool& pool,
     return result;
 }
 
+static uint64_t fib_single_parallel_coro(ThreadPool& pool,
+                                         unsigned n,
+                                         unsigned split_threshold,
+                                         uint64_t& spawned_internal_nodes) {
+    struct Node {
+        explicit Node(unsigned nn, std::shared_ptr<Node> p = nullptr, bool l = false)
+            : n(nn), parent(std::move(p)), is_left_child(l) {}
+
+        unsigned n;
+        uint64_t left{0};
+        uint64_t right{0};
+        std::atomic<int> pending{0};
+        std::shared_ptr<Node> parent;
+        bool is_left_child;
+    };
+
+    std::mutex done_mutex;
+    std::condition_variable done_cv;
+    uint64_t result = 0;
+    bool done = false;
+    std::atomic<uint64_t> spawned{0};
+    coro::PoolScheduler sched(pool);
+
+    std::function<void(std::shared_ptr<Node>, uint64_t)> complete;
+    std::function<coro::DetachedTask(std::shared_ptr<Node>)> run;
+
+    complete = [&](std::shared_ptr<Node> cur, uint64_t value) {
+        while (true) {
+            const std::shared_ptr<Node> parent = cur->parent;
+            if (!parent) {
+                {
+                    std::lock_guard<std::mutex> lk(done_mutex);
+                    result = value;
+                    done = true;
+                }
+                done_cv.notify_one();
+                return;
+            }
+
+            if (cur->is_left_child) {
+                parent->left = value;
+            } else {
+                parent->right = value;
+            }
+
+            const int prev = parent->pending.fetch_sub(1, std::memory_order_acq_rel);
+            if (prev == 1) {
+                value = parent->left + parent->right;
+                cur = parent;
+                continue;
+            }
+            return;
+        }
+    };
+
+    run = [&](std::shared_ptr<Node> node) -> coro::DetachedTask {
+        co_await sched.schedule();
+
+        if (node->n <= split_threshold) {
+            complete(node, fib_seq(node->n));
+            co_return;
+        }
+
+        node->pending.store(2, std::memory_order_relaxed);
+        spawned.fetch_add(1, std::memory_order_relaxed);
+
+        auto left = std::make_shared<Node>(node->n - 1, node, true);
+        auto right = std::make_shared<Node>(node->n - 2, node, false);
+
+        run(left);
+        run(right);
+    };
+
+    auto root = std::make_shared<Node>(n);
+    run(root);
+
+    {
+        std::unique_lock<std::mutex> lk(done_mutex);
+        done_cv.wait(lk, [&] { return done; });
+    }
+
+    spawned_internal_nodes = spawned.load(std::memory_order_relaxed);
+    return result;
+}
+
 template <typename Pool>
 static double run_once(Pool& pool,
                        unsigned fib_n,
@@ -147,15 +233,26 @@ static double run_once(Pool& pool,
     return seconds_since(t0);
 }
 
+static double run_once_coro(ThreadPool& pool,
+                            unsigned fib_n,
+                            unsigned split_threshold,
+                            uint64_t& fib_value,
+                            uint64_t& spawned_internal_nodes) {
+    const auto t0 = Clock::now();
+    fib_value = fib_single_parallel_coro(pool, fib_n, split_threshold, spawned_internal_nodes);
+    return seconds_since(t0);
+}
+
 static void usage(const char* prog) {
     std::cerr
         << "Usage:\n  " << prog
-        << " <pool: classic|elastic|ws|advws> <fib_n> <threads> <warmup> <reps> [split_threshold]\n\n"
+        << " <pool: classic|elastic|ws|advws|coro> <fib_n> <threads> <warmup> <reps> [split_threshold]\n\n"
         << "Examples:\n"
         << "  " << prog << " classic 44 8 1 3\n"
         << "  " << prog << " ws      44 8 1 3\n"
         << "  " << prog << " elastic 44 8 1 3\n"
         << "  " << prog << " advws   44 8 1 3\n"
+        << "  " << prog << " coro    44 8 1 3\n"
         << "  " << prog << " ws      50 8 1 3 34\n";
 }
 
@@ -234,6 +331,24 @@ int main(int argc, char** argv) {
                 ThreadPool::PoolKind::AdvancedElasticStealing,
                 std::chrono::milliseconds(200));
             run_pool(pool);
+        } else if (pool_kind == "coro") {
+            ThreadPool pool(threads);
+            for (int i = 0; i < warmup; ++i) {
+                uint64_t warm_value = 0;
+                uint64_t warm_spawned = 0;
+                (void)run_once_coro(pool, fib_n, split_threshold, warm_value, warm_spawned);
+            }
+
+            for (int r = 0; r < reps; ++r) {
+                uint64_t value = 0;
+                uint64_t spawned = 0;
+                const double t = run_once_coro(pool, fib_n, split_threshold, value, spawned);
+                best = std::min(best, t);
+                sum += t;
+                last_value = value;
+                last_spawned = spawned;
+                std::cout << "Run " << r << ": " << t << " s\n";
+            }
         } else {
             std::cerr << "Unknown pool kind: " << pool_kind << "\n";
             usage(argv[0]);

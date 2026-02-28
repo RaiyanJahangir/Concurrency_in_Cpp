@@ -398,3 +398,45 @@ To install wrk:
 sudo apt update
 sudo apt install wrk
 ```
+
+### Compare Pools With wrk
+
+If you want to drive the HTTP benchmark with `wrk` instead of the custom
+`mixed_bench` client, this repo now includes:
+- `wrk_workload.lua`: generates `/work?cpu1=...&io=...&cpu2=...` requests
+- `run_mixed_wrk_all_pools.sh`: runs `wrk` across `classic`, `coro`, `ws`, `elastic`, and `advws`
+
+Single run example:
+```
+./mini_http_server coro 8080 8
+wrk -t4 -c32 -d10s --latency \
+  -s ./wrk_workload.lua http://127.0.0.1:8080 -- 200 5000 200
+```
+
+The positional values passed after `--` are:
+- `cpu1_us`
+- `io_us`
+- `cpu2_us`
+
+Full comparison across all modes:
+```
+chmod +x run_mixed_wrk_all_pools.sh
+./run_mixed_wrk_all_pools.sh
+```
+
+Optional environment overrides:
+```
+WRK_THREADS=4 WRK_TIMEOUT=15s ./run_mixed_wrk_all_pools.sh 8080 127.0.0.1
+MODES="classic coro ws" ./run_mixed_wrk_all_pools.sh
+```
+
+Results are written to:
+```
+results/mixed_wrk_<timestamp>/summary.csv
+```
+
+The CSV captures:
+- latency summary from `wrk` (`Latency`, `Req/Sec`, `p50`, `p75`, `p90`, `p99`)
+- total requests and throughput
+- socket errors, if any
+- raw log path for each `(mode, preset)` run

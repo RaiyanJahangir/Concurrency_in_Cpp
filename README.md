@@ -405,6 +405,7 @@ If you want to drive the HTTP benchmark with `wrk` instead of the custom
 `mixed_bench` client, this repo now includes:
 - `wrk_workload.lua`: generates `/work?cpu1=...&io=...&cpu2=...` requests
 - `run_mixed_wrk_all_pools.sh`: runs `wrk` across `classic`, `coro`, `ws`, `elastic`, and `advws`
+- `run_mixed_wrk_all_perf_stats.sh`: runs the same `wrk` sweep while collecting server-side `perf stat` counters
 
 Single run example:
 ```
@@ -440,3 +441,21 @@ The CSV captures:
 - total requests and throughput
 - socket errors, if any
 - raw log path for each `(mode, preset)` run
+
+To collect `perf stat` counters for each server mode during the same sweep:
+```
+chmod +x run_mixed_wrk_all_perf_stats.sh
+./run_mixed_wrk_all_perf_stats.sh
+```
+
+Optional environment overrides:
+```
+WRK_THREADS=4 WRK_TIMEOUT=15s ./run_mixed_wrk_all_perf_stats.sh 8080 127.0.0.1
+MODES="classic coro ws elastic advws" ./run_mixed_wrk_all_perf_stats.sh
+PERF_EVENTS="task-clock,context-switches,cpu-migrations,page-faults,cycles,instructions" ./run_mixed_wrk_all_perf_stats.sh
+```
+
+Results are written to:
+```
+results/mixed_wrk_perf_<timestamp>/summary.csv
+```

@@ -68,15 +68,19 @@ extract_after_prefix() {
   local file="$1"
   local prefix="$2"
   awk -v p="$prefix" '
-    index($0, p) == 1 {
+    {
       line = $0
-      sub("^" p, "", line)
-      gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
-      print line
-      exit
+      sub(/^[[:space:]]+/, "", line)  # handle leading tabs/spaces from /usr/bin/time -v
+      if (index(line, p) == 1) {
+        line = substr(line, length(p) + 1)  # remove prefix literally (not regex)
+        gsub(/^[[:space:]]+|[[:space:]]+$/, "", line)
+        print line
+        exit
+      }
     }
   ' "$file"
 }
+
 
 extract_best_s() {
   local file="$1"

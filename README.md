@@ -181,6 +181,101 @@ Run the benchmark with one of the thread pool
 - 4th arg: number of warmup runs (not timed)
 - 5th arg: number of timed runs (best and average reported)
 
+## Run the Matrix Chain Multiplication Benchmark "matrix_chain_bench.cpp"
+
+This benchmark multiplies a chain of square matrices:
+```
+A0 x A1 x A2 x ... x A(L-1)
+```
+Each multiplication step uses blocked/tiled parallel matrix multiplication and supports:
+- `classic` (fixed threads + global queue)
+- `ws` (fixed threads + work stealing)
+- `elastic` (dynamic threads + global queue)
+- `advws` (dynamic threads + work stealing)
+- `coro` (coroutine tasks scheduled on a fixed pool)
+
+Build:
+```
+g++ -O3 -std=c++20 -pthread matrix_chain_bench.cpp \
+  thread_pool.cpp \
+  -o matrix_chain_bench
+```
+
+Run:
+```
+./matrix_chain_bench classic 512 64 4 8 1 3
+./matrix_chain_bench ws      512 64 4 8 1 3
+./matrix_chain_bench elastic 512 64 4 8 1 3
+./matrix_chain_bench advws   512 64 4 8 1 3
+./matrix_chain_bench coro    512 64 4 8 1 3
+```
+- 1st arg: runtime mode (`classic | ws | elastic | advws | coro`)
+- 2nd arg: matrix dimension (`N`, square matrices)
+- 3rd arg: block size (`BS`)
+- 4th arg: chain length (`L`, number of matrices in the chain)
+- 5th arg: number of threads
+- 6th arg: number of warmup runs (not timed)
+- 7th arg: number of timed runs (best and average reported)
+
+Suggested presets for visible differences:
+```
+# Light
+./matrix_chain_bench classic 384 32 4 8 1 3
+
+# Mid
+./matrix_chain_bench classic 640 64 5 8 1 3
+
+# Heavy
+./matrix_chain_bench classic 896 64 6 8 1 3
+```
+
+## Run Matrix Chain Across All Modes + Collect CSV/Perf
+
+Use the automation script:
+```
+chmod +x run_matrix_chain_all_perf_stats.sh
+./run_matrix_chain_all_perf_stats.sh
+```
+
+Useful overrides:
+```
+THREADS_LIST="1 2 4 8 16" \
+WARMUP=1 REPS=3 \
+MODES="classic coro ws elastic advws" \
+./run_matrix_chain_all_perf_stats.sh
+```
+
+Results are written to:
+```
+results/matrix_chain_perf_<timestamp>/summary.csv
+```
+
+## Matrix Chain Analysis + Graphs
+
+Generate a markdown report (winner counts, normalized runtime, speedups):
+```
+python analyze_matrix_chain_summary.py \
+  results/matrix_chain_perf_<timestamp>/summary.csv \
+  --out results/matrix_chain_perf_<timestamp>/analysis_report.md
+```
+
+Generate plots:
+```
+python plot_matrix_chain_summary.py \
+  results/matrix_chain_perf_<timestamp>/summary.csv \
+  --outdir results/matrix_chain_perf_<timestamp>/plots
+```
+
+Generated plots include:
+- runtime scaling by thread count (per preset)
+- speedup vs classic by thread count
+- best-mode heatmap across preset/thread scenarios
+- winner counts (overall + by thread)
+- stability ratio (`avg/best`)
+- runtime vs context switches / memory scatter
+- effective GFLOP/s by mode and thread count
+- resource boxplots (RSS and cache miss rate)
+
 
 
 ## To start and run an experiment on CloudLab:

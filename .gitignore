@@ -1,6 +1,6 @@
 # Build/output directories
 /build/
-
+/venv/
 
 # Object and binary artifacts
 *.o

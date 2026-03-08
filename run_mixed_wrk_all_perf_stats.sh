@@ -18,6 +18,10 @@ set -euo pipefail
 #   THREADS_LIST="1 2 4 8 16"
 #   REPS=3
 #   PERF_EVENTS="task-clock,context-switches,cpu-migrations,page-faults,cycles,instructions,branches,branch-misses,cache-references,cache-misses"
+#   ELASTIC_MIN_THREADS=1
+#   ELASTIC_MAX_THREADS=32
+#   ADVWS_MIN_THREADS=1
+#   ADVWS_MAX_THREADS=32
 
 PORT="${1:-8080}"
 HOST="${2:-127.0.0.1}"
@@ -34,6 +38,10 @@ REPS="${REPS:-3}"
 PERF_EVENTS="${PERF_EVENTS:-task-clock,context-switches,cpu-migrations,page-faults,cycles,instructions,branches,branch-misses,cache-references,cache-misses}"
 PERF_ATTACH_PAD_S="${PERF_ATTACH_PAD_S:-2}"
 ADVWS_IDLE_MS="${ADVWS_IDLE_MS:-50}"
+ELASTIC_MIN_THREADS="${ELASTIC_MIN_THREADS:-}"
+ELASTIC_MAX_THREADS="${ELASTIC_MAX_THREADS:-}"
+ADVWS_MIN_THREADS="${ADVWS_MIN_THREADS:-}"
+ADVWS_MAX_THREADS="${ADVWS_MAX_THREADS:-}"
 
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
 OUT_DIR="$ROOT_DIR/results/mixed_wrk_perf_$TIMESTAMP"
@@ -75,6 +83,10 @@ start_server() {
   local mode="$1"
   local threads="$2"
   local log_file="$3"
+  local elastic_min="$4"
+  local elastic_max="$5"
+  local advws_min="$6"
+  local advws_max="$7"
 
   case "$mode" in
     classic)
@@ -87,10 +99,10 @@ start_server() {
       "$SERVER_BIN" ws "$PORT" "$threads" >"$log_file" 2>&1 &
       ;;
     elastic)
-      "$SERVER_BIN" elastic "$PORT" "$threads" "$threads" >"$log_file" 2>&1 &
+      "$SERVER_BIN" elastic "$PORT" "$elastic_min" "$elastic_max" >"$log_file" 2>&1 &
       ;;
     advws)
-      "$SERVER_BIN" advws "$PORT" "$threads" "$threads" "$ADVWS_IDLE_MS" >"$log_file" 2>&1 &
+      "$SERVER_BIN" advws "$PORT" "$advws_min" "$advws_max" "$ADVWS_IDLE_MS" >"$log_file" 2>&1 &
       ;;
     *)
       echo "Unknown mode: $mode" >&2
@@ -313,11 +325,21 @@ for threads in "${THREAD_COUNTS[@]}"; do
         perf_log="$case_dir/perf_run${run_idx}.log"
         time_log="$case_dir/time_run${run_idx}.log"
 
-        echo "[run] mode=$mode threads=$threads preset=$preset_name run=$run_idx/$REPS cpu1=$cpu1 io=$io cpu2=$cpu2 conns=$connections duration=$duration"
+        elastic_min="${ELASTIC_MIN_THREADS:-$((threads > 1 ? threads / 2 : 1))}"
+        elastic_max="${ELASTIC_MAX_THREADS:-$((threads * 2))}"
+        advws_min="${ADVWS_MIN_THREADS:-$((threads > 1 ? threads / 2 : 1))}"
+        advws_max="${ADVWS_MAX_THREADS:-$((threads * 2))}"
+
+        if (( elastic_min < 1 )); then elastic_min=1; fi
+        if (( advws_min < 1 )); then advws_min=1; fi
+        if (( elastic_max < elastic_min )); then elastic_max=$elastic_min; fi
+        if (( advws_max < advws_min )); then advws_max=$advws_min; fi
+
+        echo "[run] mode=$mode threads=$threads preset=$preset_name run=$run_idx/$REPS cpu1=$cpu1 io=$io cpu2=$cpu2 conns=$connections duration=$duration elastic=${elastic_min}-${elastic_max} advws=${advws_min}-${advws_max}"
 
         stop_perf_attach
         stop_server
-        start_server "$mode" "$threads" "$server_log"
+        start_server "$mode" "$threads" "$server_log" "$elastic_min" "$elastic_max" "$advws_min" "$advws_max"
         start_perf_attach "$perf_log" "$duration"
 
         set +e

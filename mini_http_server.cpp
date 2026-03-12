@@ -2,12 +2,13 @@
 Mini HTTP server backed by your ThreadPool.
 
 Endpoint:
-  GET /work?cpu1=200&io=5000&cpu2=200
+  GET /work?cpu1_mm=2&io=5000&cpu2_mm=2&mm_n=1024&mm_bs=64
 
-Meaning (microseconds):
-  cpu1: CPU busy work before I/O
+Meaning:
+  cpu1_mm: number of matrix multiplies before I/O
   io:   blocking wait to simulate I/O (sleep)
-  cpu2: CPU busy work after I/O
+  cpu2_mm: number of matrix multiplies after I/O
+  mm_n/mm_bs: matrix size and blocking size used by each multiply
 
 Build (Linux/macOS):
   g++ -O2 -std=c++20 -pthread mini_http_server.cpp thread_pool.cpp -o mini_http_server
@@ -38,6 +39,8 @@ Notes:
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
@@ -49,6 +52,7 @@ Notes:
 #include <string>
 #include <string_view>
 #include <thread>
+#include <vector>
 
 using Clock = std::chrono::steady_clock;
 
@@ -58,17 +62,61 @@ static inline uint64_t now_ns() {
         .count();
 }
 
-static void burn_cpu_us(int us) {
-    if (us <= 0) return;
-    const uint64_t start = now_ns();
-    const uint64_t end = start + (uint64_t)us * 1000ull;
-    volatile uint64_t x = 1469598103934665603ull;
-    while (now_ns() < end) {
-        x ^= (x << 13);
-        x ^= (x >> 7);
-        x ^= (x << 17);
-        x *= 1099511628211ull;
+static inline size_t ridx(size_t N, size_t r, size_t c) {
+    return r * N + c;
+}
+
+static std::atomic<uint64_t> g_matmul_sink{0};
+
+static void run_matrix_multiply_reps(int reps, int n_in, int bs_in) {
+    if (reps <= 0) return;
+
+    const size_t N = (n_in > 0) ? static_cast<size_t>(n_in) : 1024u;
+    const size_t BS = (bs_in > 0) ? static_cast<size_t>(bs_in) : 64u;
+
+    thread_local std::vector<double> A;
+    thread_local std::vector<double> B;
+    thread_local std::vector<double> C;
+    thread_local size_t cap_n = 0;
+
+    if (cap_n != N) {
+        A.assign(N * N, 0.0);
+        B.assign(N * N, 0.0);
+        C.assign(N * N, 0.0);
+        cap_n = N;
+
+        for (size_t i = 0; i < N; ++i) {
+            for (size_t j = 0; j < N; ++j) {
+                A[ridx(N, i, j)] = static_cast<double>((i * 131 + j * 17) % 23) * 0.1;
+                B[ridx(N, i, j)] = static_cast<double>((i * 29 + j * 73) % 19) * 0.2;
+            }
+        }
     }
+
+    uint64_t local_sink = 0;
+    for (int rep = 0; rep < reps; ++rep) {
+        std::fill(C.begin(), C.end(), 0.0);
+        for (size_t i0 = 0; i0 < N; i0 += BS) {
+            const size_t i_max = std::min(i0 + BS, N);
+            for (size_t j0 = 0; j0 < N; j0 += BS) {
+                const size_t j_max = std::min(j0 + BS, N);
+                for (size_t k0 = 0; k0 < N; k0 += BS) {
+                    const size_t k_max = std::min(k0 + BS, N);
+                    for (size_t i = i0; i < i_max; ++i) {
+                        for (size_t k = k0; k < k_max; ++k) {
+                            const double aik = A[ridx(N, i, k)];
+                            const size_t b_row = ridx(N, k, 0);
+                            for (size_t j = j0; j < j_max; ++j) {
+                                C[ridx(N, i, j)] += aik * B[b_row + j];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        local_sink += static_cast<uint64_t>(C[0] * 1000.0) ^ static_cast<uint64_t>(C[N * N - 1] * 1000.0);
+    }
+    g_matmul_sink.fetch_add(local_sink, std::memory_order_relaxed);
 }
 
 static std::optional<int> parse_int(std::string_view s) {
@@ -88,7 +136,7 @@ static std::optional<int> parse_int(std::string_view s) {
     return sign * v;
 }
 
-// Very small query parser for ints like "?cpu1=200&io=5000&cpu2=200".
+// Very small query parser for ints like "?cpu1_mm=2&io=5000&cpu2_mm=2".
 static int get_q_int(std::string_view target, std::string_view key, int def) {
     const size_t qpos = target.find('?');
     if (qpos == std::string_view::npos) return def;
@@ -201,25 +249,29 @@ static void handle_connection(int client_fd) {
     const bool is_work = (target.rfind("/work", 0) == 0);
     if (!is_work) {
         auto resp = make_http_response(404, "text/plain",
-                                       "Try /work?cpu1=200&io=5000&cpu2=200 (microseconds)\n");
+                                       "Try /work?cpu1_mm=2&io=5000&cpu2_mm=2&mm_n=1024&mm_bs=64\n");
         (void)send_all(client_fd, resp.data(), resp.size());
         ::close(client_fd);
         return;
     }
 
-    // Mixed workload params (us)
-    int cpu1_us = get_q_int(target, "cpu1", 200);
-    int io_us   = get_q_int(target, "io",   5000);
-    int cpu2_us = get_q_int(target, "cpu2", 200);
+    // Mixed workload params: fixed matrix-work units + blocking I/O.
+    int cpu1_mm = get_q_int(target, "cpu1_mm", get_q_int(target, "cpu1", 2));
+    int io_us = get_q_int(target, "io", 5000);
+    int cpu2_mm = get_q_int(target, "cpu2_mm", get_q_int(target, "cpu2", 2));
+    int mm_n = get_q_int(target, "mm_n", 1024);
+    int mm_bs = get_q_int(target, "mm_bs", 64);
+    mm_n = std::max(8, mm_n);
+    mm_bs = std::max(4, mm_bs);
 
     const uint64_t t0 = now_ns();
 
-    // CPU -> (blocking) I/O -> CPU
-    burn_cpu_us(cpu1_us);
+    // CPU(matmul units) -> (blocking) I/O -> CPU(matmul units)
+    run_matrix_multiply_reps(cpu1_mm, mm_n, mm_bs);
     if (io_us > 0) {
         std::this_thread::sleep_for(std::chrono::microseconds(io_us));
     }
-    burn_cpu_us(cpu2_us);
+    run_matrix_multiply_reps(cpu2_mm, mm_n, mm_bs);
 
     const uint64_t total_us = (now_ns() - t0) / 1000ull;
 
@@ -227,9 +279,11 @@ static void handle_connection(int client_fd) {
     std::ostringstream body;
     body << "{";
     body << "\"endpoint\":\"/work\",";
-    body << "\"cpu1_us\":" << cpu1_us << ',';
+    body << "\"cpu1_mm\":" << cpu1_mm << ',';
     body << "\"io_us\":" << io_us << ',';
-    body << "\"cpu2_us\":" << cpu2_us << ',';
+    body << "\"cpu2_mm\":" << cpu2_mm << ',';
+    body << "\"mm_n\":" << mm_n << ',';
+    body << "\"mm_bs\":" << mm_bs << ',';
     body << "\"total_us\":" << total_us;
     body << "}\n";
 
@@ -265,30 +319,36 @@ static coro::DetachedTask handle_connection_coro(int client_fd, coro::PoolSchedu
         const bool is_work = (target.rfind("/work", 0) == 0);
         if (!is_work) {
             auto resp = make_http_response(404, "text/plain",
-                                           "Try /work?cpu1=200&io=5000&cpu2=200 (microseconds)\n");
+                                           "Try /work?cpu1_mm=2&io=5000&cpu2_mm=2&mm_n=1024&mm_bs=64\n");
             (void)send_all(client_fd, resp.data(), resp.size());
             ::close(client_fd);
             co_return;
         }
 
-        int cpu1_us = get_q_int(target, "cpu1", 200);
+        int cpu1_mm = get_q_int(target, "cpu1_mm", get_q_int(target, "cpu1", 2));
         int io_us = get_q_int(target, "io", 5000);
-        int cpu2_us = get_q_int(target, "cpu2", 200);
+        int cpu2_mm = get_q_int(target, "cpu2_mm", get_q_int(target, "cpu2", 2));
+        int mm_n = get_q_int(target, "mm_n", 1024);
+        int mm_bs = get_q_int(target, "mm_bs", 64);
+        mm_n = std::max(8, mm_n);
+        mm_bs = std::max(4, mm_bs);
 
         const uint64_t t0 = now_ns();
 
-        burn_cpu_us(cpu1_us);
+        run_matrix_multiply_reps(cpu1_mm, mm_n, mm_bs);
         co_await coro::sleep_for(std::chrono::microseconds(io_us), sched);
-        burn_cpu_us(cpu2_us);
+        run_matrix_multiply_reps(cpu2_mm, mm_n, mm_bs);
 
         const uint64_t total_us = (now_ns() - t0) / 1000ull;
 
         std::ostringstream body;
         body << "{";
         body << "\"endpoint\":\"/work\",";
-        body << "\"cpu1_us\":" << cpu1_us << ',';
+        body << "\"cpu1_mm\":" << cpu1_mm << ',';
         body << "\"io_us\":" << io_us << ',';
-        body << "\"cpu2_us\":" << cpu2_us << ',';
+        body << "\"cpu2_mm\":" << cpu2_mm << ',';
+        body << "\"mm_n\":" << mm_n << ',';
+        body << "\"mm_bs\":" << mm_bs << ',';
         body << "\"total_us\":" << total_us;
         body << "}\n";
 
@@ -395,7 +455,7 @@ int main(int argc, char** argv) {
 
         int listen_fd = make_listen_socket(port);
         std::cout << "Listening on 0.0.0.0:" << port
-                  << " | endpoint: /work?cpu1=200&io=5000&cpu2=200 (us)\n";
+                  << " | endpoint: /work?cpu1_mm=2&io=5000&cpu2_mm=2&mm_n=1024&mm_bs=64\n";
 
         while (true) {
             sockaddr_in client{};

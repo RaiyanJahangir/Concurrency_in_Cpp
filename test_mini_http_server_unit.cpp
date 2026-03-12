@@ -135,20 +135,20 @@ private:
     }
 
     static void get_q_int_value_and_default() {
-        const std::string_view target = "/work?cpu1=20&io=30&cpu2=x";
-        expect_eq(get_q_int(target, "cpu1", 99), 20, "cpu1 should parse from query");
+        const std::string_view target = "/work?cpu1_mm=2&io=30&cpu2_mm=x";
+        expect_eq(get_q_int(target, "cpu1_mm", 99), 2, "cpu1_mm should parse from query");
         expect_eq(get_q_int(target, "io", 99), 30, "io should parse from query");
-        expect_eq(get_q_int(target, "cpu2", 99), 99, "invalid integer should return default");
-        expect_eq(get_q_int("/work", "cpu1", 77), 77, "missing query should return default");
+        expect_eq(get_q_int(target, "cpu2_mm", 99), 99, "invalid integer should return default");
+        expect_eq(get_q_int("/work", "cpu1_mm", 77), 77, "missing query should return default");
     }
 
     static void parse_request_target_valid() {
         std::string_view method;
         std::string_view target;
-        const bool ok = parse_request_target("GET /work?cpu1=1 HTTP/1.1\r\nHost: x\r\n\r\n", method, target);
+        const bool ok = parse_request_target("GET /work?cpu1_mm=1 HTTP/1.1\r\nHost: x\r\n\r\n", method, target);
         expect_true(ok, "valid request line should parse");
         expect_true(method == "GET", "method mismatch");
-        expect_true(target == "/work?cpu1=1", "target mismatch");
+        expect_true(target == "/work?cpu1_mm=1", "target mismatch");
     }
 
     static void parse_request_target_invalid() {
@@ -184,21 +184,23 @@ private:
             "\r\n";
         const std::string resp = run_request_through_handler(req);
         expect_contains(resp, "HTTP/1.1 404 Not Found\r\n", "expected 404 for unknown route");
-        expect_contains(resp, "Try /work?cpu1=200&io=5000&cpu2=200", "expected help message");
+        expect_contains(resp, "Try /work?cpu1_mm=2&io=5000&cpu2_mm=2&mm_n=1024&mm_bs=64", "expected help message");
     }
 
     static void handle_work_returns_json_200() {
         const std::string req =
-            "GET /work?cpu1=0&io=0&cpu2=0 HTTP/1.1\r\n"
+            "GET /work?cpu1_mm=0&io=0&cpu2_mm=0&mm_n=16&mm_bs=8 HTTP/1.1\r\n"
             "Host: localhost\r\n"
             "\r\n";
         const std::string resp = run_request_through_handler(req);
         expect_contains(resp, "HTTP/1.1 200 OK\r\n", "expected 200 for /work");
         expect_contains(resp, "Content-Type: application/json\r\n", "expected JSON response type");
         expect_contains(resp, "\"endpoint\":\"/work\"", "missing endpoint field");
-        expect_contains(resp, "\"cpu1_us\":0", "missing cpu1_us field");
+        expect_contains(resp, "\"cpu1_mm\":0", "missing cpu1_mm field");
         expect_contains(resp, "\"io_us\":0", "missing io_us field");
-        expect_contains(resp, "\"cpu2_us\":0", "missing cpu2_us field");
+        expect_contains(resp, "\"cpu2_mm\":0", "missing cpu2_mm field");
+        expect_contains(resp, "\"mm_n\":16", "missing mm_n field");
+        expect_contains(resp, "\"mm_bs\":8", "missing mm_bs field");
         expect_contains(resp, "\"total_us\":", "missing total_us field");
     }
 };

@@ -14,6 +14,8 @@ set -euo pipefail
 # Optional env overrides:
 #   WRK_THREADS=4
 #   WRK_TIMEOUT=15s
+#   MM_N=1024
+#   MM_BS=64
 #   MODES="classic coro ws elastic advws"
 #   THREADS_LIST="1 2 4 8 16"
 #   REPS=3
@@ -32,6 +34,8 @@ WRK_SCRIPT="$ROOT_DIR/wrk_workload.lua"
 
 WRK_THREADS="${WRK_THREADS:-4}"
 WRK_TIMEOUT="${WRK_TIMEOUT:-15s}"
+MM_N="${MM_N:-1024}"
+MM_BS="${MM_BS:-64}"
 MODES_STRING="${MODES:-classic coro ws elastic advws}"
 THREADS_LIST="${THREADS_LIST:-1 2 4 8 16}"
 REPS="${REPS:-3}"
@@ -290,18 +294,18 @@ if [[ "${HAS_PERF:-0}" != "1" ]]; then
   echo "[warn] perf metrics will be blank." >&2
 fi
 
-echo "mode,threads,preset,run,cpu1_us,io_us,cpu2_us,connections,duration,wrk_threads,exit_code,runtime_s,lat_avg,lat_stdev,lat_max,req_sec_avg,req_sec_stdev,req_sec_max,p50,p75,p90,p99,requests,total_read,requests_sec,transfer_sec,socket_errors,perf_available,perf_task_clock,perf_context_switches,perf_cpu_migrations,perf_page_faults,perf_cycles,perf_instructions,perf_branches,perf_branch_misses,perf_cache_references,perf_cache_misses,server_log,wrk_log,perf_log,time_log" > "$RUNS_CSV"
-echo "mode,threads,preset,cpu1_us,io_us,cpu2_us,connections,duration,wrk_threads,reps,successful_runs,best_runtime_s,avg_runtime_s,best_requests_sec,avg_requests_sec,best_latency_avg,avg_latency_avg,run_logs_dir" > "$SUMMARY_CSV"
+echo "mode,threads,preset,run,cpu1_mm,io_us,cpu2_mm,mm_n,mm_bs,connections,duration,wrk_threads,exit_code,runtime_s,lat_avg,lat_stdev,lat_max,req_sec_avg,req_sec_stdev,req_sec_max,p50,p75,p90,p99,requests,total_read,requests_sec,transfer_sec,socket_errors,perf_available,perf_task_clock,perf_context_switches,perf_cpu_migrations,perf_page_faults,perf_cycles,perf_instructions,perf_branches,perf_branch_misses,perf_cache_references,perf_cache_misses,server_log,wrk_log,perf_log,time_log" > "$RUNS_CSV"
+echo "mode,threads,preset,cpu1_mm,io_us,cpu2_mm,mm_n,mm_bs,connections,duration,wrk_threads,reps,successful_runs,best_runtime_s,avg_runtime_s,best_requests_sec,avg_requests_sec,best_latency_avg,avg_latency_avg,run_logs_dir" > "$SUMMARY_CSV"
 
 declare -a MODES=($MODES_STRING)
 declare -a THREAD_COUNTS=($THREADS_LIST)
 declare -a PRESETS=(
-  "p1_light_cpu_heavy_io 100 8000 100 16 8s"
-  "p2_balanced 200 5000 200 32 10s"
-  "p3_cpu_heavy 1200 200 1200 32 10s"
-  "p4_io_heavy_high_conc 100 10000 100 64 12s"
-  "p5_stress_mix 600 3000 600 96 12s"
-  "p6_ultra_io_bound 50 20000 50 64 12s"
+  "p1_light_cpu_heavy_io 1 8000 1 16 8s"
+  "p2_balanced 2 5000 2 32 10s"
+  "p3_cpu_heavy 3 200 3 32 10s"
+  "p4_io_heavy_high_conc 1 10000 1 64 12s"
+  "p5_stress_mix 2 3000 2 96 12s"
+  "p6_ultra_io_bound 1 20000 1 64 12s"
 )
 
 trap 'stop_perf_attach; stop_server' EXIT
@@ -309,7 +313,7 @@ trap 'stop_perf_attach; stop_server' EXIT
 for threads in "${THREAD_COUNTS[@]}"; do
   for mode in "${MODES[@]}"; do
     for preset in "${PRESETS[@]}"; do
-      read -r preset_name cpu1 io cpu2 connections duration <<< "$preset"
+      read -r preset_name cpu1_mm io cpu2_mm connections duration <<< "$preset"
 
       case_dir="$OUT_DIR/${mode}_t${threads}_${preset_name}"
       mkdir -p "$case_dir"
@@ -335,7 +339,7 @@ for threads in "${THREAD_COUNTS[@]}"; do
         if (( elastic_max < elastic_min )); then elastic_max=$elastic_min; fi
         if (( advws_max < advws_min )); then advws_max=$advws_min; fi
 
-        echo "[run] mode=$mode threads=$threads preset=$preset_name run=$run_idx/$REPS cpu1=$cpu1 io=$io cpu2=$cpu2 conns=$connections duration=$duration elastic=${elastic_min}-${elastic_max} advws=${advws_min}-${advws_max}"
+        echo "[run] mode=$mode threads=$threads preset=$preset_name run=$run_idx/$REPS cpu1_mm=$cpu1_mm io=$io cpu2_mm=$cpu2_mm mm_n=$MM_N mm_bs=$MM_BS conns=$connections duration=$duration elastic=${elastic_min}-${elastic_max} advws=${advws_min}-${advws_max}"
 
         stop_perf_attach
         stop_server
@@ -346,7 +350,7 @@ for threads in "${THREAD_COUNTS[@]}"; do
         /usr/bin/time -f "%e" -o "$time_log" \
           wrk -t"$WRK_THREADS" -c"$connections" -d"$duration" \
             --timeout "$WRK_TIMEOUT" --latency \
-            -s "$WRK_SCRIPT" "http://$HOST:$PORT" -- "$cpu1" "$io" "$cpu2" \
+            -s "$WRK_SCRIPT" "http://$HOST:$PORT" -- "$cpu1_mm" "$io" "$cpu2_mm" "$MM_N" "$MM_BS" \
             >"$wrk_log" 2>&1
         rc=$?
         set -e
@@ -399,7 +403,7 @@ for threads in "${THREAD_COUNTS[@]}"; do
           perf_cache_misses="$(extract_perf_value "$perf_log" "cache-misses")"
         fi
 
-        echo "$mode,$threads,$preset_name,$run_idx,$cpu1,$io,$cpu2,$connections,$duration,$WRK_THREADS,$rc,${runtime_s:-},${lat_avg:-},${lat_stdev:-},${lat_max:-},${req_avg:-},${req_stdev:-},${req_max:-},${p50:-},${p75:-},${p90:-},${p99:-},${requests:-},${total_read:-},${requests_sec:-},${transfer_sec:-},${socket_errors:-},${HAS_PERF:-0},${perf_task_clock:-},${perf_context_switches:-},${perf_cpu_migrations:-},${perf_page_faults:-},${perf_cycles:-},${perf_instructions:-},${perf_branches:-},${perf_branch_misses:-},${perf_cache_refs:-},${perf_cache_misses:-},$server_log,$wrk_log,$perf_log,$time_log" >> "$RUNS_CSV"
+        echo "$mode,$threads,$preset_name,$run_idx,$cpu1_mm,$io,$cpu2_mm,$MM_N,$MM_BS,$connections,$duration,$WRK_THREADS,$rc,${runtime_s:-},${lat_avg:-},${lat_stdev:-},${lat_max:-},${req_avg:-},${req_stdev:-},${req_max:-},${p50:-},${p75:-},${p90:-},${p99:-},${requests:-},${total_read:-},${requests_sec:-},${transfer_sec:-},${socket_errors:-},${HAS_PERF:-0},${perf_task_clock:-},${perf_context_switches:-},${perf_cpu_migrations:-},${perf_page_faults:-},${perf_cycles:-},${perf_instructions:-},${perf_branches:-},${perf_branch_misses:-},${perf_cache_refs:-},${perf_cache_misses:-},$server_log,$wrk_log,$perf_log,$time_log" >> "$RUNS_CSV"
 
         if [[ $rc -eq 0 ]]; then
           success_runs=$((success_runs + 1))
@@ -439,7 +443,7 @@ for threads in "${THREAD_COUNTS[@]}"; do
         fi
       fi
 
-      echo "$mode,$threads,$preset_name,$cpu1,$io,$cpu2,$connections,$duration,$WRK_THREADS,$REPS,$success_runs,${best_runtime_s:-},${avg_runtime_s:-},${best_requests_sec:-},${avg_requests_sec:-},${best_latency_avg:-},${avg_latency_avg:-},$case_dir" >> "$SUMMARY_CSV"
+      echo "$mode,$threads,$preset_name,$cpu1_mm,$io,$cpu2_mm,$MM_N,$MM_BS,$connections,$duration,$WRK_THREADS,$REPS,$success_runs,${best_runtime_s:-},${avg_runtime_s:-},${best_requests_sec:-},${avg_requests_sec:-},${best_latency_avg:-},${avg_latency_avg:-},$case_dir" >> "$SUMMARY_CSV"
     done
   done
 done

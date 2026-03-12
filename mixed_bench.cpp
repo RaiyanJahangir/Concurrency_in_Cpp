@@ -7,10 +7,10 @@ Build:
   g++ -O2 -std=c++20 -pthread mixed_bench.cpp -o mixed_bench
 
 Run:
-  ./mixed_bench 127.0.0.1 8080 200 5000 200 64 10
+  ./mixed_bench 127.0.0.1 8080 2 5000 2 64 10 1024 64
 
 Args:
-  host port cpu1_us io_us cpu2_us concurrency duration_s
+  host port cpu1_mm io_us cpu2_mm concurrency duration_s [mm_n] [mm_bs]
 
 Notes:
   - This intentionally does a "simple" client (one request per TCP connection).
@@ -100,21 +100,25 @@ static double pct(std::vector<double> v, double q) {
 
 int main(int argc, char** argv) {
     if (argc < 8) {
-        std::cerr << "Usage: ./mixed_bench host port cpu1_us io_us cpu2_us concurrency duration_s\n";
+        std::cerr << "Usage: ./mixed_bench host port cpu1_mm io_us cpu2_mm concurrency duration_s [mm_n] [mm_bs]\n";
         return 2;
     }
 
     const std::string host = argv[1];
     const uint16_t port = (uint16_t)std::stoi(argv[2]);
-    const int cpu1_us = std::stoi(argv[3]);
+    const int cpu1_mm = std::stoi(argv[3]);
     const int io_us = std::stoi(argv[4]);
-    const int cpu2_us = std::stoi(argv[5]);
+    const int cpu2_mm = std::stoi(argv[5]);
     const int conc = std::max(1, std::stoi(argv[6]));
     const int duration_s = std::max(1, std::stoi(argv[7]));
+    const int mm_n = (argc >= 9) ? std::max(8, std::stoi(argv[8])) : 1024;
+    const int mm_bs = (argc >= 10) ? std::max(4, std::stoi(argv[9])) : 64;
 
-    const std::string path = "/work?cpu1=" + std::to_string(cpu1_us) +
+    const std::string path = "/work?cpu1_mm=" + std::to_string(cpu1_mm) +
                              "&io=" + std::to_string(io_us) +
-                             "&cpu2=" + std::to_string(cpu2_us);
+                             "&cpu2_mm=" + std::to_string(cpu2_mm) +
+                             "&mm_n=" + std::to_string(mm_n) +
+                             "&mm_bs=" + std::to_string(mm_bs);
 
     const std::string req =
         "GET " + path + " HTTP/1.1\r\n" +

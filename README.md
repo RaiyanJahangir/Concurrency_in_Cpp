@@ -42,6 +42,20 @@ Run:
 ./pool_test
 ```
 
+## Work-Stealing Fixed Pool (Fixed Threads + Per-Thread Queues)
+
+Added a fixed-size work-stealing pool that keeps per-thread deques and allows
+threads to steal tasks when they run out of local work.
+
+Build:
+```
+g++ -O2 -std=c++20 -pthread test_forkjoin_workstealing.cpp thread_pool.cpp -o ws_test
+```
+Run:
+```
+./ws_test
+```
+
 ## Elastic Pool (Dynamic Threads + Global Queue)
 
 Added an elastic thread pool that grows/shrinks between a minimum and a maximum

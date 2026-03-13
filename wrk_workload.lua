@@ -2,21 +2,16 @@
 --
 -- Usage example:
 --   wrk -t4 -c32 -d10s --latency \
---     -s wrk_workload.lua http://127.0.0.1:8080 -- 2 5000 2 1024 64
+--     -s wrk_workload.lua http://127.0.0.1:8080 -- 200 5000 200
 
-local path = "/work?cpu1_mm=2&io=5000&cpu2_mm=2&mm_n=1024&mm_bs=64"
+local path = "/work?cpu1=200&io=5000&cpu2=200"
 
 init = function(args)
-  local cpu1_mm = tonumber(args[1]) or 2
+  local cpu1 = tonumber(args[1]) or 200
   local io = tonumber(args[2]) or 5000
-  local cpu2_mm = tonumber(args[3]) or 2
-  local mm_n = tonumber(args[4]) or 1024
-  local mm_bs = tonumber(args[5]) or 64
+  local cpu2 = tonumber(args[3]) or 200
 
-  path = string.format(
-    "/work?cpu1_mm=%d&io=%d&cpu2_mm=%d&mm_n=%d&mm_bs=%d",
-    cpu1_mm, io, cpu2_mm, mm_n, mm_bs
-  )
+  path = string.format("/work?cpu1=%d&io=%d&cpu2=%d", cpu1, io, cpu2)
 end
 
 request = function()

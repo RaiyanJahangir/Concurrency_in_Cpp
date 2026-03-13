@@ -76,6 +76,21 @@ def fmt_pct(v: float, nd: int = 1) -> str:
     return f"{v:.{nd}f}%"
 
 
+def describe_ratio_change(ratio: float, metric: str, better_when_lower: bool = False) -> str:
+    if pd.isna(ratio) or not np.isfinite(ratio):
+        return f"`{metric}` comparison is unavailable"
+    pct = abs(ratio - 1.0) * 100.0
+    if np.isclose(ratio, 1.0, atol=0.02):
+        return f"`{metric}` is near parity"
+    if better_when_lower:
+        if ratio < 1.0:
+            return f"`{pct:.1f}%` lower {metric}"
+        return f"`{pct:.1f}%` higher {metric}"
+    if ratio > 1.0:
+        return f"`{pct:.1f}%` higher {metric}"
+    return f"`{pct:.1f}%` lower {metric}"
+
+
 def build_report(summary_csv: Path, runs_csv: Path) -> str:
     summary = pd.read_csv(summary_csv)
     runs = pd.read_csv(runs_csv)
@@ -229,7 +244,7 @@ def build_report(summary_csv: Path, runs_csv: Path) -> str:
         c = gm_df[gm_df["mode"] == "coro"].iloc[0]
         rep.append("\nInterpretation:")
         rep.append(
-            f"- `coro` delivers about `{c['rps_sp']:.2f}x` throughput and about `{(1.0 - c['lat_rt']) * 100.0:.1f}%` lower average latency than `classic`."
+            f"- `coro` delivers about `{c['rps_sp']:.2f}x` throughput and {describe_ratio_change(c['lat_rt'], 'average latency', better_when_lower=True)} than `classic`."
         )
         others_df = gm_df[gm_df["mode"] != "coro"].copy()
         if not others_df.empty:
@@ -398,8 +413,14 @@ def build_report(summary_csv: Path, runs_csv: Path) -> str:
         rep.append(f"- Branch miss rate: `{c.bmr / k.bmr:.3f}x`")
         rep.append(f"- Cache miss rate: `{c.cmr / k.cmr:.3f}x`")
         rep.append("\nInterpretation:")
-        rep.append("- `coro` gains major throughput/latency, but does more scheduler and memory-system work per request.")
-        rep.append("- Efficiency per request (especially cache behavior) is weaker in `coro`, but service performance is much better in this benchmark.")
+        rep.append(
+            f"- Relative to `classic`, `coro` shows `{c.avg_rps / k.avg_rps:.3f}x` throughput, "
+            f"`{c.ctx_k / k.ctx_k:.3f}x` context switches per 1k requests, and `{c.cmr / k.cmr:.3f}x` cache miss rate."
+        )
+        if (c.cyc_k / k.cyc_k) <= 1.05 and (c.ins_k / k.ins_k) <= 1.05 and (c.cmr / k.cmr) <= 1.05:
+            rep.append("- Per-request CPU and memory efficiency is roughly on par with `classic` in this dataset.")
+        else:
+            rep.append("- `coro` improves service throughput, but its per-request CPU/memory efficiency is weaker than `classic` in this dataset.")
     else:
         rep.append("Insufficient `coro`/`classic` data for this section.")
 
@@ -520,13 +541,30 @@ def build_report(summary_csv: Path, runs_csv: Path) -> str:
     else:
         rep.append("\nConclusion for the four pool variants: there are material throughput gaps in this dataset.")
 
+    overall_best = norm_by_mode.iloc[0] if not norm_by_mode.empty else None
+    coro_gm = gm_df[gm_df["mode"] == "coro"].iloc[0] if "coro" in gm_df["mode"].values else None
+    coro_wins = int(win_counts.get("coro", 0))
+
     rep.append("\n\n## Bottom Line")
-    rep.append("1. `coro` is the dominant mode for this mixed HTTP workload dataset, with large gains in throughput and latency, especially on I/O-heavy presets.")
+    if overall_best is not None:
+        rep.append(
+            f"1. `{overall_best['mode']}` is the strongest overall mode in this dataset by average normalized throughput (`{overall_best['norm_rps']:.4f}`)."
+        )
+    if coro_gm is not None:
+        rep.append(
+            f"2. `coro` wins `{coro_wins}` of `{len(winners)}` scenarios, with `{coro_gm['rps_sp']:.3f}x` geometric-mean throughput vs `classic` and {describe_ratio_change(coro_gm['lat_rt'], 'average latency', better_when_lower=True)}."
+        )
     if np.isfinite(non_spread) and non_spread <= 0.01:
-        rep.append("2. Among the four thread-pool implementations (excluding `coro`), results are effectively tied in this benchmark.")
+        rep.append("3. Among the four thread-pool implementations (excluding `coro`), results are effectively tied in this benchmark.")
     else:
-        rep.append("2. Among the four thread-pool implementations (excluding `coro`), `advws`/`elastic` materially outperform `classic`/`ws` in this run.")
-    rep.append("3. `coro` trades per-request CPU/memory efficiency for much better service-level throughput/latency.")
+        rep.append("3. Among the four thread-pool implementations (excluding `coro`), `advws`/`elastic` materially outperform `classic`/`ws` in this run.")
+    if {"coro", "classic"}.issubset(set(mode_perf["mode"])):
+        cyc_ratio = c.cyc_k / k.cyc_k
+        cmr_ratio = c.cmr / k.cmr
+        if cyc_ratio <= 1.05 and cmr_ratio <= 1.05:
+            rep.append("4. `coro` achieves its gains with per-request perf characteristics that stay close to `classic`.")
+        else:
+            rep.append("4. `coro` achieves its gains while doing more CPU/memory-system work per request than `classic`.")
 
     return "\n".join(rep) + "\n"
 

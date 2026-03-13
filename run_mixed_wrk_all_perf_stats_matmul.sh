@@ -1,37 +1,31 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Run the mixed /work benchmark with wrk across all server modes and collect:
-# - per-run wrk latency / throughput metrics
-# - per-run wall-clock runtime
-# - server-side perf stat counters (if perf is available and usable)
-# - aggregate best/average runtime across repeated runs
+# Run the matrix-backed mixed /work benchmark with wrk across all server modes.
+# This variant leaves the original mixed benchmark script untouched.
 #
 # Usage:
-#   ./run_mixed_wrk_all_perf_stats.sh
-#   ./run_mixed_wrk_all_perf_stats.sh <port> <host>
+#   ./run_mixed_wrk_all_perf_stats_matmul.sh
+#   ./run_mixed_wrk_all_perf_stats_matmul.sh <port> <host>
 #
 # Optional env overrides:
 #   WRK_THREADS=4
-#   WRK_TIMEOUT=15s
+#   WRK_TIMEOUT=20s
 #   MODES="classic coro ws elastic advws"
 #   THREADS_LIST="1 2 4 8 16"
 #   REPS=3
-#   PERF_EVENTS="task-clock,context-switches,cpu-migrations,page-faults,cycles,instructions,branches,branch-misses,cache-references,cache-misses"
-#   ELASTIC_MIN_THREADS=1
-#   ELASTIC_MAX_THREADS=32
-#   ADVWS_MIN_THREADS=1
-#   ADVWS_MAX_THREADS=32
+#   MIXED_MATMUL_N=64
+#   MIXED_MATMUL_BS=32
 
 PORT="${1:-8080}"
 HOST="${2:-127.0.0.1}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SERVER_BIN="$ROOT_DIR/mini_http_server"
+SERVER_BIN="$ROOT_DIR/mini_http_server_matmul"
 WRK_SCRIPT="$ROOT_DIR/wrk_workload.lua"
 
 WRK_THREADS="${WRK_THREADS:-4}"
-WRK_TIMEOUT="${WRK_TIMEOUT:-15s}"
+WRK_TIMEOUT="${WRK_TIMEOUT:-20s}"
 MODES_STRING="${MODES:-classic coro ws elastic advws}"
 THREADS_LIST="${THREADS_LIST:-1 2 4 8 16}"
 REPS="${REPS:-3}"
@@ -42,9 +36,11 @@ ELASTIC_MIN_THREADS="${ELASTIC_MIN_THREADS:-}"
 ELASTIC_MAX_THREADS="${ELASTIC_MAX_THREADS:-}"
 ADVWS_MIN_THREADS="${ADVWS_MIN_THREADS:-}"
 ADVWS_MAX_THREADS="${ADVWS_MAX_THREADS:-}"
+MIXED_MATMUL_N="${MIXED_MATMUL_N:-64}"
+MIXED_MATMUL_BS="${MIXED_MATMUL_BS:-32}"
 
 TIMESTAMP="$(date +%Y%m%d_%H%M%S)"
-OUT_DIR="$ROOT_DIR/results/mixed_wrk_perf_$TIMESTAMP"
+OUT_DIR="$ROOT_DIR/results/mixed_wrk_matmul_perf_$TIMESTAMP"
 RUNS_CSV="$OUT_DIR/runs.csv"
 SUMMARY_CSV="$OUT_DIR/summary.csv"
 
@@ -55,12 +51,12 @@ PERF_PID=""
 
 build_if_needed() {
   if [[ ! -x "$SERVER_BIN" || \
-        "$ROOT_DIR/mini_http_server.cpp" -nt "$SERVER_BIN" || \
+        "$ROOT_DIR/mini_http_server_matmul.cpp" -nt "$SERVER_BIN" || \
         "$ROOT_DIR/thread_pool.cpp" -nt "$SERVER_BIN" || \
         "$ROOT_DIR/thread_pool.h" -nt "$SERVER_BIN" || \
         "$ROOT_DIR/coro_runtime.h" -nt "$SERVER_BIN" ]]; then
-    echo "[build] mini_http_server"
-    g++ -O2 -std=c++20 -pthread "$ROOT_DIR/mini_http_server.cpp" "$ROOT_DIR/thread_pool.cpp" -o "$SERVER_BIN"
+    echo "[build] mini_http_server_matmul"
+    g++ -O2 -std=c++20 -pthread "$ROOT_DIR/mini_http_server_matmul.cpp" "$ROOT_DIR/thread_pool.cpp" -o "$SERVER_BIN"
   fi
 }
 
@@ -90,19 +86,24 @@ start_server() {
 
   case "$mode" in
     classic)
-      "$SERVER_BIN" classic "$PORT" "$threads" >"$log_file" 2>&1 &
+      MIXED_MATMUL_N="$MIXED_MATMUL_N" MIXED_MATMUL_BS="$MIXED_MATMUL_BS" \
+        "$SERVER_BIN" classic "$PORT" "$threads" >"$log_file" 2>&1 &
       ;;
     coro)
-      "$SERVER_BIN" coro "$PORT" "$threads" >"$log_file" 2>&1 &
+      MIXED_MATMUL_N="$MIXED_MATMUL_N" MIXED_MATMUL_BS="$MIXED_MATMUL_BS" \
+        "$SERVER_BIN" coro "$PORT" "$threads" >"$log_file" 2>&1 &
       ;;
     ws)
-      "$SERVER_BIN" ws "$PORT" "$threads" >"$log_file" 2>&1 &
+      MIXED_MATMUL_N="$MIXED_MATMUL_N" MIXED_MATMUL_BS="$MIXED_MATMUL_BS" \
+        "$SERVER_BIN" ws "$PORT" "$threads" >"$log_file" 2>&1 &
       ;;
     elastic)
-      "$SERVER_BIN" elastic "$PORT" "$elastic_min" "$elastic_max" >"$log_file" 2>&1 &
+      MIXED_MATMUL_N="$MIXED_MATMUL_N" MIXED_MATMUL_BS="$MIXED_MATMUL_BS" \
+        "$SERVER_BIN" elastic "$PORT" "$elastic_min" "$elastic_max" >"$log_file" 2>&1 &
       ;;
     advws)
-      "$SERVER_BIN" advws "$PORT" "$advws_min" "$advws_max" "$ADVWS_IDLE_MS" >"$log_file" 2>&1 &
+      MIXED_MATMUL_N="$MIXED_MATMUL_N" MIXED_MATMUL_BS="$MIXED_MATMUL_BS" \
+        "$SERVER_BIN" advws "$PORT" "$advws_min" "$advws_max" "$ADVWS_IDLE_MS" >"$log_file" 2>&1 &
       ;;
     *)
       echo "Unknown mode: $mode" >&2
@@ -290,18 +291,18 @@ if [[ "${HAS_PERF:-0}" != "1" ]]; then
   echo "[warn] perf metrics will be blank." >&2
 fi
 
-echo "mode,threads,preset,run,cpu1_us,io_us,cpu2_us,connections,duration,wrk_threads,exit_code,runtime_s,lat_avg,lat_stdev,lat_max,req_sec_avg,req_sec_stdev,req_sec_max,p50,p75,p90,p99,requests,total_read,requests_sec,transfer_sec,socket_errors,perf_available,perf_task_clock,perf_context_switches,perf_cpu_migrations,perf_page_faults,perf_cycles,perf_instructions,perf_branches,perf_branch_misses,perf_cache_references,perf_cache_misses,server_log,wrk_log,perf_log,time_log" > "$RUNS_CSV"
-echo "mode,threads,preset,cpu1_us,io_us,cpu2_us,connections,duration,wrk_threads,reps,successful_runs,best_runtime_s,avg_runtime_s,best_requests_sec,avg_requests_sec,best_latency_avg,avg_latency_avg,run_logs_dir" > "$SUMMARY_CSV"
+echo "mode,threads,preset,run,cpu1_iters,io_us,cpu2_iters,connections,duration,wrk_threads,exit_code,runtime_s,lat_avg,lat_stdev,lat_max,req_sec_avg,req_sec_stdev,req_sec_max,p50,p75,p90,p99,requests,total_read,requests_sec,transfer_sec,socket_errors,perf_available,perf_task_clock,perf_context_switches,perf_cpu_migrations,perf_page_faults,perf_cycles,perf_instructions,perf_branches,perf_branch_misses,perf_cache_references,perf_cache_misses,server_log,wrk_log,perf_log,time_log" > "$RUNS_CSV"
+echo "mode,threads,preset,cpu1_iters,io_us,cpu2_iters,connections,duration,wrk_threads,reps,successful_runs,best_runtime_s,avg_runtime_s,best_requests_sec,avg_requests_sec,best_latency_avg,avg_latency_avg,run_logs_dir" > "$SUMMARY_CSV"
 
 declare -a MODES=($MODES_STRING)
 declare -a THREAD_COUNTS=($THREADS_LIST)
 declare -a PRESETS=(
-  "p1_light_cpu_heavy_io 100 8000 100 16 8s"
-  "p2_balanced 200 5000 200 32 10s"
-  "p3_cpu_heavy 1200 200 1200 32 10s"
-  "p4_io_heavy_high_conc 100 10000 100 64 12s"
-  "p5_stress_mix 600 3000 600 96 12s"
-  "p6_ultra_io_bound 50 20000 50 64 12s"
+  "p1_light_matmul_heavy_io 1 8000 1 16 8s"
+  "p2_balanced 2 5000 2 32 10s"
+  "p3_cpu_heavy 6 500 6 24 10s"
+  "p4_io_heavy_high_conc 1 12000 1 64 12s"
+  "p5_stress_mix 4 3000 4 48 12s"
+  "p6_ultra_io_bound 1 20000 1 64 12s"
 )
 
 trap 'stop_perf_attach; stop_server' EXIT
@@ -335,7 +336,7 @@ for threads in "${THREAD_COUNTS[@]}"; do
         if (( elastic_max < elastic_min )); then elastic_max=$elastic_min; fi
         if (( advws_max < advws_min )); then advws_max=$advws_min; fi
 
-        echo "[run] mode=$mode threads=$threads preset=$preset_name run=$run_idx/$REPS cpu1=$cpu1 io=$io cpu2=$cpu2 conns=$connections duration=$duration elastic=${elastic_min}-${elastic_max} advws=${advws_min}-${advws_max}"
+        echo "[run] mode=$mode threads=$threads preset=$preset_name run=$run_idx/$REPS cpu1_iters=$cpu1 io=$io cpu2_iters=$cpu2 conns=$connections duration=$duration N=$MIXED_MATMUL_N BS=$MIXED_MATMUL_BS elastic=${elastic_min}-${elastic_max} advws=${advws_min}-${advws_max}"
 
         stop_perf_attach
         stop_server

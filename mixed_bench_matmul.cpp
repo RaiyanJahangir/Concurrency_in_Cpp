@@ -1,22 +1,19 @@
 /*
-Client-side benchmark for mini_http_server.cpp.
-
-It opens many concurrent clients to /work and measures latency + throughput.
+Client-side benchmark for mini_http_server_matmul.cpp.
 
 Build:
-  g++ -O2 -std=c++20 -pthread mixed_bench.cpp -o mixed_bench
+  g++ -O2 -std=c++20 -pthread mixed_bench_matmul.cpp -o mixed_bench_matmul
 
 Run:
-  ./mixed_bench 127.0.0.1 8080 200 5000 200 64 10
+  ./mixed_bench_matmul 127.0.0.1 8080 2 5000 2 64 10
 
 Args:
-  host port cpu1_us io_us cpu2_us concurrency duration_s
+  host port cpu1_iters io_us cpu2_iters concurrency duration_s
 
 Notes:
-  - This intentionally does a "simple" client (one request per TCP connection).
-    For OS-level metrics (context switches, CPU util) that’s usually fine.
-  - If you want to reduce connect() overhead, adapt it to persistent keep-alive
-    connections per worker.
+  - cpu1/cpu2 are matrix-multiplication iteration counts on the server side.
+  - Matrix size/block size are controlled by the server via MIXED_MATMUL_N and
+    MIXED_MATMUL_BS.
 */
 
 #include <arpa/inet.h>
@@ -100,21 +97,21 @@ static double pct(std::vector<double> v, double q) {
 
 int main(int argc, char** argv) {
     if (argc < 8) {
-        std::cerr << "Usage: ./mixed_bench host port cpu1_us io_us cpu2_us concurrency duration_s\n";
+        std::cerr << "Usage: ./mixed_bench_matmul host port cpu1_iters io_us cpu2_iters concurrency duration_s\n";
         return 2;
     }
 
     const std::string host = argv[1];
     const uint16_t port = (uint16_t)std::stoi(argv[2]);
-    const int cpu1_us = std::stoi(argv[3]);
+    const int cpu1_iters = std::stoi(argv[3]);
     const int io_us = std::stoi(argv[4]);
-    const int cpu2_us = std::stoi(argv[5]);
+    const int cpu2_iters = std::stoi(argv[5]);
     const int conc = std::max(1, std::stoi(argv[6]));
     const int duration_s = std::max(1, std::stoi(argv[7]));
 
-    const std::string path = "/work?cpu1=" + std::to_string(cpu1_us) +
+    const std::string path = "/work?cpu1=" + std::to_string(cpu1_iters) +
                              "&io=" + std::to_string(io_us) +
-                             "&cpu2=" + std::to_string(cpu2_us);
+                             "&cpu2=" + std::to_string(cpu2_iters);
 
     const std::string req =
         "GET " + path + " HTTP/1.1\r\n" +
@@ -180,7 +177,6 @@ int main(int argc, char** argv) {
     uint64_t ok_n = ok.load();
     uint64_t fail_n = fail.load();
 
-    // Copy latency vector under lock
     std::vector<double> lats;
     {
         std::lock_guard<std::mutex> lk(lat_m);

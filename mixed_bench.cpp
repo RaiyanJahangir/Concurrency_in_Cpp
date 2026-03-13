@@ -7,7 +7,7 @@ Build:
   g++ -O2 -std=c++20 -pthread mixed_bench.cpp -o mixed_bench
 
 Run:
-  ./mixed_bench 127.0.0.1 8080 2 5000 2 64 10 1024 64
+  ./mixed_bench 127.0.0.1 8080 2 5000 2 64 10 256 32
 
 Args:
   host port cpu1_mm io_us cpu2_mm concurrency duration_s [mm_n] [mm_bs]
@@ -111,8 +111,8 @@ int main(int argc, char** argv) {
     const int cpu2_mm = std::stoi(argv[5]);
     const int conc = std::max(1, std::stoi(argv[6]));
     const int duration_s = std::max(1, std::stoi(argv[7]));
-    const int mm_n = (argc >= 9) ? std::max(8, std::stoi(argv[8])) : 1024;
-    const int mm_bs = (argc >= 10) ? std::max(4, std::stoi(argv[9])) : 64;
+    const int mm_n = (argc >= 9) ? std::max(8, std::stoi(argv[8])) : 256;
+    const int mm_bs = (argc >= 10) ? std::max(4, std::stoi(argv[9])) : 32;
 
     const std::string path = "/work?cpu1_mm=" + std::to_string(cpu1_mm) +
                              "&io=" + std::to_string(io_us) +

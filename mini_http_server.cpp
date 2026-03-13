@@ -2,7 +2,7 @@
 Mini HTTP server backed by your ThreadPool.
 
 Endpoint:
-  GET /work?cpu1_mm=2&io=5000&cpu2_mm=2&mm_n=1024&mm_bs=64
+  GET /work?cpu1_mm=2&io=5000&cpu2_mm=2&mm_n=256&mm_bs=32
 
 Meaning:
   cpu1_mm: number of matrix multiplies before I/O
@@ -71,8 +71,8 @@ static std::atomic<uint64_t> g_matmul_sink{0};
 static void run_matrix_multiply_reps(int reps, int n_in, int bs_in) {
     if (reps <= 0) return;
 
-    const size_t N = (n_in > 0) ? static_cast<size_t>(n_in) : 1024u;
-    const size_t BS = (bs_in > 0) ? static_cast<size_t>(bs_in) : 64u;
+    const size_t N = (n_in > 0) ? static_cast<size_t>(n_in) : 256u;
+    const size_t BS = (bs_in > 0) ? static_cast<size_t>(bs_in) : 32u;
 
     thread_local std::vector<double> A;
     thread_local std::vector<double> B;
@@ -249,7 +249,7 @@ static void handle_connection(int client_fd) {
     const bool is_work = (target.rfind("/work", 0) == 0);
     if (!is_work) {
         auto resp = make_http_response(404, "text/plain",
-                                       "Try /work?cpu1_mm=2&io=5000&cpu2_mm=2&mm_n=1024&mm_bs=64\n");
+                                       "Try /work?cpu1_mm=2&io=5000&cpu2_mm=2&mm_n=256&mm_bs=32\n");
         (void)send_all(client_fd, resp.data(), resp.size());
         ::close(client_fd);
         return;
@@ -259,8 +259,8 @@ static void handle_connection(int client_fd) {
     int cpu1_mm = get_q_int(target, "cpu1_mm", get_q_int(target, "cpu1", 2));
     int io_us = get_q_int(target, "io", 5000);
     int cpu2_mm = get_q_int(target, "cpu2_mm", get_q_int(target, "cpu2", 2));
-    int mm_n = get_q_int(target, "mm_n", 1024);
-    int mm_bs = get_q_int(target, "mm_bs", 64);
+    int mm_n = get_q_int(target, "mm_n", 256);
+    int mm_bs = get_q_int(target, "mm_bs", 32);
     mm_n = std::max(8, mm_n);
     mm_bs = std::max(4, mm_bs);
 
@@ -319,7 +319,7 @@ static coro::DetachedTask handle_connection_coro(int client_fd, coro::PoolSchedu
         const bool is_work = (target.rfind("/work", 0) == 0);
         if (!is_work) {
             auto resp = make_http_response(404, "text/plain",
-                                           "Try /work?cpu1_mm=2&io=5000&cpu2_mm=2&mm_n=1024&mm_bs=64\n");
+                                           "Try /work?cpu1_mm=2&io=5000&cpu2_mm=2&mm_n=256&mm_bs=32\n");
             (void)send_all(client_fd, resp.data(), resp.size());
             ::close(client_fd);
             co_return;
@@ -328,8 +328,8 @@ static coro::DetachedTask handle_connection_coro(int client_fd, coro::PoolSchedu
         int cpu1_mm = get_q_int(target, "cpu1_mm", get_q_int(target, "cpu1", 2));
         int io_us = get_q_int(target, "io", 5000);
         int cpu2_mm = get_q_int(target, "cpu2_mm", get_q_int(target, "cpu2", 2));
-        int mm_n = get_q_int(target, "mm_n", 1024);
-        int mm_bs = get_q_int(target, "mm_bs", 64);
+        int mm_n = get_q_int(target, "mm_n", 256);
+        int mm_bs = get_q_int(target, "mm_bs", 32);
         mm_n = std::max(8, mm_n);
         mm_bs = std::max(4, mm_bs);
 
@@ -455,7 +455,7 @@ int main(int argc, char** argv) {
 
         int listen_fd = make_listen_socket(port);
         std::cout << "Listening on 0.0.0.0:" << port
-                  << " | endpoint: /work?cpu1_mm=2&io=5000&cpu2_mm=2&mm_n=1024&mm_bs=64\n";
+                  << " | endpoint: /work?cpu1_mm=2&io=5000&cpu2_mm=2&mm_n=256&mm_bs=32\n";
 
         while (true) {
             sockaddr_in client{};

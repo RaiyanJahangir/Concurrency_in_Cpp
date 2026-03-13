@@ -14,8 +14,8 @@ set -euo pipefail
 # Optional env overrides:
 #   WRK_THREADS=4
 #   WRK_TIMEOUT=15s
-#   MM_N=1024
-#   MM_BS=64
+#   MM_N=256
+#   MM_BS=32
 #   MODES="classic coro ws elastic advws"
 #   THREADS_LIST="1 2 4 8 16"
 #   REPS=3
@@ -34,8 +34,8 @@ WRK_SCRIPT="$ROOT_DIR/wrk_workload.lua"
 
 WRK_THREADS="${WRK_THREADS:-4}"
 WRK_TIMEOUT="${WRK_TIMEOUT:-15s}"
-MM_N="${MM_N:-1024}"
-MM_BS="${MM_BS:-64}"
+MM_N="${MM_N:-256}"
+MM_BS="${MM_BS:-32}"
 MODES_STRING="${MODES:-classic coro ws elastic advws}"
 THREADS_LIST="${THREADS_LIST:-1 2 4 8 16}"
 REPS="${REPS:-3}"

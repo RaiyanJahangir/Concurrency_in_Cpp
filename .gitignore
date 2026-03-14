@@ -1,6 +1,7 @@
 # Build/output directories
 /build/
 /venv/
+/__pycache__/
 
 # Object and binary artifacts
 *.o
@@ -19,20 +20,31 @@
 /fib_fast_bench
 /fib_single_bench
 /matrix_mul_bench
+/matrix_fib_unit_test
 /mini_http_server
+/mini_http_server_matmul
 /mini_http_server_new
 /mixed_bench
+/mixed_bench_matmul
 /mixed_bench_new
 /pool_test
 /ws_test
 
 /run_cpu_workloads
 /run_cpu_workloads.sh
+/test_mini_http_server_unit
+/thread_pool_unit_test
+/thread_pool_unit_test_O0
+/thread_pool_unit_test_O1
+/thread_pool_unit_test_clang
+/thread_pool_unit_test_nocprop
 
 
 # Generated logs/outputs
 *.log
 *.out
+*.pyc
+*:Zone.Identifier
 
 
 # Editor/OS noise

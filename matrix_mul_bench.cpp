@@ -199,7 +199,7 @@ static double checksum_sparse(const std::vector<double>& C) {
 static void usage(const char* prog) {
     std::cerr
         << "Usage:\n  " << prog
-        << " <pool: classic|elastic|ws|advws> <N> <BS> <threads> <warmup> <reps>\n\n"
+        << " <pool: classic|elastic|ws|advws|coro> <N> <BS> <threads> <warmup> <reps>\n\n"
         << "Examples:\n"
         << "  " << prog << " classic 1024 64 8 1 3\n"
         << "  " << prog << " ws      1024 64 8 1 3\n"

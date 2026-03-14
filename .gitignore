@@ -34,8 +34,6 @@
 *.log
 *.out
 
-# Local extracted/intermediate files
-/ECS_251_Project_Proposal_extracted.txt
 
 # Editor/OS noise
 .DS_Store

@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Generate SVG performance plots from matrix multiplication summary.csv.
+"""Generate matrix multiplication performance plots from summary.csv.
 
-This version uses only the Python standard library (no matplotlib dependency).
+Plot drawing uses only the Python standard library. PNG export is supported
+when a rasterizer is available in the active environment.
 
 Usage:
   python3 plot_matrix_mul_summary.py /path/to/summary.csv
@@ -12,7 +13,11 @@ from __future__ import annotations
 
 import argparse
 import csv
+import importlib.util
 import math
+import shutil
+import subprocess
+import tempfile
 from collections import Counter, defaultdict
 from html import escape
 from pathlib import Path
@@ -28,6 +33,10 @@ MODE_COLORS = {
     "elastic": "#9467bd",
 }
 PRESET_ORDER = ["light", "mid", "heavy"]
+
+OUTPUT_MODE = "svg"
+PNG_SCALE = 4.0
+PNG_BACKEND: Optional[str] = None
 
 
 class SvgCanvas:
@@ -91,9 +100,101 @@ class SvgCanvas:
             f'text-anchor="{anchor}" font-weight="{weight}">{escape(content)}</text>'
         )
 
+    def render(self) -> str:
+        return "\n".join(self.parts + ["</svg>"]) + "\n"
+
     def save(self, path: Path) -> None:
-        self.parts.append("</svg>")
-        path.write_text("\n".join(self.parts) + "\n", encoding="utf-8")
+        path.write_text(self.render(), encoding="utf-8")
+
+
+def detect_png_backend() -> Optional[str]:
+    if importlib.util.find_spec("cairosvg") is not None:
+        return "cairosvg"
+    if shutil.which("rsvg-convert"):
+        return "rsvg-convert"
+    if shutil.which("inkscape"):
+        return "inkscape"
+    return None
+
+
+def resolve_output_mode(requested: str) -> Tuple[str, Optional[str]]:
+    backend = detect_png_backend()
+    if requested == "auto":
+        return ("png", backend) if backend else ("svg", None)
+    if requested == "svg":
+        return "svg", None
+    if requested == "png":
+        if backend is None:
+            raise SystemExit("PNG output requested, but no rasterizer is available. Install cairosvg, rsvg-convert, or inkscape.")
+        return "png", backend
+    if requested == "both":
+        if backend is None:
+            raise SystemExit("Both output formats requested, but no PNG rasterizer is available. Install cairosvg, rsvg-convert, or inkscape.")
+        return "both", backend
+    raise SystemExit(f"Unsupported output format: {requested}")
+
+
+def rasterize_svg(svg_path: Path, png_path: Path, scale: float, backend: str) -> None:
+    if backend == "cairosvg":
+        import cairosvg
+
+        cairosvg.svg2png(url=str(svg_path), write_to=str(png_path), scale=scale)
+        return
+
+    if backend == "rsvg-convert":
+        subprocess.run(
+            ["rsvg-convert", "-f", "png", "-o", str(png_path), "-z", str(scale), str(svg_path)],
+            check=True,
+        )
+        return
+
+    if backend == "inkscape":
+        subprocess.run(
+            [
+                "inkscape",
+                str(svg_path),
+                "--export-type=png",
+                f"--export-filename={png_path}",
+                f"--export-dpi={96.0 * scale}",
+            ],
+            check=True,
+        )
+        return
+
+    raise SystemExit(f"Unsupported PNG backend: {backend}")
+
+
+def save_plot(canvas: SvgCanvas, outdir: Path, stem: str) -> None:
+    svg_path = outdir / f"{stem}.svg"
+    png_path = outdir / f"{stem}.png"
+
+    if OUTPUT_MODE in {"svg", "both"}:
+        canvas.save(svg_path)
+
+    if OUTPUT_MODE in {"png", "both"}:
+        if PNG_BACKEND is None:
+            raise SystemExit("PNG output selected without an available rasterizer backend.")
+
+        if OUTPUT_MODE == "both":
+            rasterize_svg(svg_path, png_path, PNG_SCALE, PNG_BACKEND)
+            return
+
+        with tempfile.NamedTemporaryFile("w", suffix=".svg", delete=False, encoding="utf-8", dir=outdir) as tmp:
+            tmp_path = Path(tmp.name)
+            tmp.write(canvas.render())
+
+        try:
+            rasterize_svg(tmp_path, png_path, PNG_SCALE, PNG_BACKEND)
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+
+def plot_ref_name(stem: str) -> str:
+    if OUTPUT_MODE == "png":
+        return f"{stem}.png"
+    if OUTPUT_MODE == "both":
+        return f"{stem}.svg / {stem}.png"
+    return f"{stem}.svg"
 
 
 def to_float(value: str, default: float = float("nan")) -> float:
@@ -387,7 +488,7 @@ def plot_runtime_vs_threads_by_preset(rows: List[Dict[str, object]], outdir: Pat
         )
 
     draw_legend(c, modes, x=80, y=448, per_row=5, x_gap=140)
-    c.save(outdir / "01_runtime_vs_threads_by_preset.svg")
+    save_plot(c, outdir, "01_runtime_vs_threads_by_preset")
 
 
 def plot_speedup_vs_classic(rows: List[Dict[str, object]], outdir: Path) -> None:
@@ -432,7 +533,7 @@ def plot_speedup_vs_classic(rows: List[Dict[str, object]], outdir: Path) -> None
         show_y_labels=True,
     )
     draw_legend(c, modes, x=120, y=448, per_row=4, x_gap=170)
-    c.save(outdir / "02_speedup_vs_classic_by_thread.svg")
+    save_plot(c, outdir, "02_speedup_vs_classic_by_thread")
 
 
 def plot_best_mode_heatmap(rows: List[Dict[str, object]], outdir: Path) -> None:
@@ -475,7 +576,7 @@ def plot_best_mode_heatmap(rows: List[Dict[str, object]], outdir: Path) -> None:
 
     c.text(800, 92, "Legend", size=13, weight="bold")
     draw_legend(c, modes, x=790, y=116, per_row=1, x_gap=140)
-    c.save(outdir / "03_best_mode_heatmap.svg")
+    save_plot(c, outdir, "03_best_mode_heatmap")
 
 
 def plot_wins(rows: List[Dict[str, object]], outdir: Path) -> None:
@@ -539,7 +640,7 @@ def plot_wins(rows: List[Dict[str, object]], outdir: Path) -> None:
     c.text(rx + rw / 2.0, ry - 10, "Wins by Thread", size=13, anchor="middle", weight="bold")
 
     draw_legend(c, modes, x=120, y=458, per_row=5, x_gap=170)
-    c.save(outdir / "04_wins_overall_and_by_thread.svg")
+    save_plot(c, outdir, "04_wins_overall_and_by_thread")
 
 
 def plot_stability(rows: List[Dict[str, object]], outdir: Path) -> None:
@@ -575,7 +676,7 @@ def plot_stability(rows: List[Dict[str, object]], outdir: Path) -> None:
         show_y_labels=True,
     )
     draw_legend(c, modes, x=120, y=448, per_row=5, x_gap=140)
-    c.save(outdir / "05_stability_ratio_by_mode.svg")
+    save_plot(c, outdir, "05_stability_ratio_by_mode")
 
 
 def plot_scaling_efficiency(rows: List[Dict[str, object]], outdir: Path) -> None:
@@ -623,7 +724,7 @@ def plot_scaling_efficiency(rows: List[Dict[str, object]], outdir: Path) -> None
         show_y_labels=True,
     )
     draw_legend(c, modes, x=120, y=448, per_row=5, x_gap=140)
-    c.save(outdir / "06_scaling_efficiency_by_thread.svg")
+    save_plot(c, outdir, "06_scaling_efficiency_by_thread")
 
 
 def plot_gflops(rows: List[Dict[str, object]], outdir: Path) -> None:
@@ -661,7 +762,7 @@ def plot_gflops(rows: List[Dict[str, object]], outdir: Path) -> None:
         show_y_labels=True,
     )
     draw_legend(c, modes, x=120, y=448, per_row=5, x_gap=140)
-    c.save(outdir / "07_gflops_by_thread.svg")
+    save_plot(c, outdir, "07_gflops_by_thread")
 
 
 def plot_runtime_boxplots(rows: List[Dict[str, object]], outdir: Path) -> None:
@@ -726,30 +827,46 @@ def plot_runtime_boxplots(rows: List[Dict[str, object]], outdir: Path) -> None:
 
     c.text(x0 + w / 2.0, y0 - 10, "best_s distribution (log scale)", size=13, anchor="middle", weight="bold")
     c.text(62, y0 - 10, "seconds", size=11)
-    c.save(outdir / "08_runtime_boxplots.svg")
+    save_plot(c, outdir, "08_runtime_boxplots")
 
 
 def write_plot_index(outdir: Path) -> None:
     lines = [
         "# Plot Index",
         "",
-        "- 01_runtime_vs_threads_by_preset.svg: Runtime scaling by threads for each matrix-size preset.",
-        "- 02_speedup_vs_classic_by_thread.svg: Geometric mean speedup vs classic by thread count.",
-        "- 03_best_mode_heatmap.svg: Winning mode for each preset x thread scenario.",
-        "- 04_wins_overall_and_by_thread.svg: Total wins and per-thread win breakdown.",
-        "- 05_stability_ratio_by_mode.svg: Stability ratio (avg/best) by mode and thread.",
-        "- 06_scaling_efficiency_by_thread.svg: Speedup/threads relative to each mode's t1 baseline.",
-        "- 07_gflops_by_thread.svg: Approximate GFLOP/s by mode across thread counts.",
-        "- 08_runtime_boxplots.svg: Runtime distribution of best_s by mode.",
+        f"- {plot_ref_name('01_runtime_vs_threads_by_preset')}: Runtime scaling by threads for each matrix-size preset.",
+        f"- {plot_ref_name('02_speedup_vs_classic_by_thread')}: Geometric mean speedup vs classic by thread count.",
+        f"- {plot_ref_name('03_best_mode_heatmap')}: Winning mode for each preset x thread scenario.",
+        f"- {plot_ref_name('04_wins_overall_and_by_thread')}: Total wins and per-thread win breakdown.",
+        f"- {plot_ref_name('05_stability_ratio_by_mode')}: Stability ratio (avg/best) by mode and thread.",
+        f"- {plot_ref_name('06_scaling_efficiency_by_thread')}: Speedup/threads relative to each mode's t1 baseline.",
+        f"- {plot_ref_name('07_gflops_by_thread')}: Approximate GFLOP/s by mode across thread counts.",
+        f"- {plot_ref_name('08_runtime_boxplots')}: Runtime distribution of best_s by mode.",
     ]
     (outdir / "PLOTS.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Generate SVG plots for matrix multiplication summary.csv")
+    parser = argparse.ArgumentParser(description="Generate matrix multiplication plots as SVG or PNG.")
     parser.add_argument("csv", type=Path, help="Path to summary.csv")
     parser.add_argument("--outdir", type=Path, default=None, help="Output directory for plots")
+    parser.add_argument(
+        "--format",
+        choices=["auto", "svg", "png", "both"],
+        default="auto",
+        help="Output format. 'auto' prefers PNG when a rasterizer is available, otherwise falls back to SVG.",
+    )
+    parser.add_argument(
+        "--png-scale",
+        type=float,
+        default=4.0,
+        help="Rasterization scale factor used for PNG output.",
+    )
     args = parser.parse_args()
+
+    global OUTPUT_MODE, PNG_SCALE, PNG_BACKEND
+    OUTPUT_MODE, PNG_BACKEND = resolve_output_mode(args.format)
+    PNG_SCALE = args.png_scale
 
     csv_path = args.csv
     outdir = args.outdir if args.outdir is not None else (csv_path.parent / "plots")

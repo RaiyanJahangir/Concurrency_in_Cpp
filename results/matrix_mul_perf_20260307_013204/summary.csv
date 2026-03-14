@@ -1,3 +1,0 @@
-preset,mode,n,block_size,threads,warmup,reps,best_s,avg_s,checksum,log
-light,classic,1024,64,1,1,3,0.283927,0.283959,14.2335,results/matrix_mul_perf_20260307_013204/matrix_mul_light_classic_t1.log
-light,classic,1024,64,2,1,3,0.165641,0.165765,14.2335,results/matrix_mul_perf_20260307_013204/matrix_mul_light_classic_t2.log

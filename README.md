@@ -91,34 +91,6 @@ Run:
 ./adv_elastic_test
 ```
 
-## Coroutine Variants (Mirroring 4 Pool Types)
-
-Added `coroutine_variants.cpp`, a C++20 coroutine showcase that runs four coroutine patterns on top of the same 4 execution modes:
-- `classic` (fixed threads + global queue)
-- `ws` (fixed threads + work stealing)
-- `elastic` (dynamic threads + global queue)
-- `advws` (dynamic threads + work stealing)
-
-The executable demonstrates:
-- value-returning coroutine compute (`sum_squares`)
-- cooperative async Fibonacci (`fib`)
-- staged coroutine pipeline transform/reduce
-- detached fire-and-forget coroutines with completion barrier
-
-Build:
-```
-g++ -std=c++20 -O2 -pthread coroutine_variants.cpp thread_pool.cpp -o coroutine_variants
-```
-Run:
-```
-./coroutine_variants classic 8
-./coroutine_variants ws 8
-./coroutine_variants elastic 8
-./coroutine_variants advws 8
-```
-- 1st arg: runtime mode (`classic | ws | elastic | advws`)
-- 2nd arg: max thread count (`threads > 0`)
-
 ## Unit-Style ThreadPool Tests (Class-Based)
 
 Added `test_thread_pool_unit.cpp`, a class-based test executable with assertion-style checks for:

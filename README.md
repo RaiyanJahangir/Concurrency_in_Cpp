@@ -290,7 +290,10 @@ wrk -t4 -c32 -d10s --latency \
 - The positional values after `--` are `cpu1`, `io`, and `cpu2` for the
   `/work` endpoint parameters.
 
-## Classic fixed pool (fixed threads + Global Queue)
+
+## Detailed description of pool models, codes and usage
+
+### Classic fixed pool (fixed threads + Global Queue)
 Initial implementation of a classic fixed pool with a fixed number of threads and a global queue. We did a simple test by using 4 threads to handle 40 tasks (simple print statement) 
 to make the initial implementation work.
 
@@ -303,7 +306,7 @@ Run:
 ./pool_test
 ```
 
-## Work-Stealing Fixed Pool (Fixed Threads + Per-Thread Queues)
+### Work-Stealing Fixed Pool (Fixed Threads + Per-Thread Queues)
 
 Added a fixed-size work-stealing pool that keeps per-thread deques and allows
 threads to steal tasks when they run out of local work.
@@ -317,7 +320,7 @@ Run:
 ./ws_test
 ```
 
-## Elastic Pool (Dynamic Threads + Global Queue)
+### Elastic Pool (Dynamic Threads + Global Queue)
 
 Added an elastic thread pool that grows/shrinks between a minimum and a maximum
 thread count with an idle timeout.
@@ -336,7 +339,7 @@ Run:
 ./elastic_test
 ```
 
-## Advanced Elastic Pool (Dynamic Threads + Per-thread Queues + Stealing)
+### Advanced Elastic Pool (Dynamic Threads + Per-thread Queues + Stealing)
 
 Added an advanced elastic pool that combines:
 - dynamic threads (`min_threads` to `max_threads`)
@@ -352,7 +355,7 @@ Run:
 ./adv_elastic_test
 ```
 
-## Unit-Style ThreadPool Tests (Class-Based)
+### Unit-Style ThreadPool Tests (Class-Based)
 
 Added `test_thread_pool_unit.cpp`, a class-based test executable with assertion-style checks for:
 - constructor validation
@@ -371,7 +374,7 @@ Run:
 ```
 The executable prints `[PASS]/[FAIL]` per test and returns non-zero on failure.
 
-## Unit Tests for Matrix and Fibonacci Kernels
+### Unit Tests for Matrix and Fibonacci Kernels
 
 Added `test_matrix_fib_unit.cpp`, a unit-style test executable that validates:
 - matrix multiplication correctness (known 2x2 case)
@@ -388,7 +391,7 @@ Run:
 ./matrix_fib_unit_test
 ```
 
-## Unit Tests for Mini HTTP Server
+### Unit Tests for Mini HTTP Server
 
 Added `test_mini_http_server_unit.cpp`, a unit-style test executable that validates:
 - request parsing helpers (`parse_int`, query parsing, request-target parsing)
@@ -407,7 +410,7 @@ The executable prints `[PASS]/[FAIL]` per test and returns non-zero on failure.
 
 Note: if your GCC version hits an internal compiler error with `-O2`, use `-O1` or `-O2 -fno-cprop-registers`.
 
-## Run the Matrix Multiplication Benchmark "matrix_mul_bench.cpp"
+### Run the Matrix Multiplication Benchmark "matrix_mul_bench.cpp"
 
 ```
 g++ -O3 -std=c++20 -pthread matrix_mul_bench.cpp \
@@ -429,7 +432,7 @@ Run the benchmark with one of the execution modes:
 - 5th arg: number of warmup runs (not timed)
 - 6th arg: number of timed runs (best and average reported)
 
-## To start and run an experiment on CloudLab:
+### To start and run an experiment on CloudLab:
 
 Go to "Start an Experiment" at the top left drop-down list.
 1. Select a Profile (can just use the default profile)
@@ -441,7 +444,7 @@ Connect to the server through the shell using the `ssh` command given by CloudLa
 
 Clone the repo and run the benchmarks on the server.
 
-## Run the Fibonacci Benchmark "fib_bench.cpp"
+### Run the Fibonacci Benchmark "fib_bench.cpp"
 
 ```
 g++ -O3 -std=c++20 -pthread fib_bench.cpp \
@@ -464,7 +467,7 @@ Run the benchmark with one of the execution modes:
 - 6th optional arg: number of tasks submitted per run (default = threads)
 - 7th optional arg: recursion split threshold (default = 32)
 
-## Run the Single-Fibonacci Parallel Benchmark "fib_single_bench.cpp"
+### Run the Single-Fibonacci Parallel Benchmark "fib_single_bench.cpp"
 
 This benchmark parallelizes one Fibonacci computation tree (instead of running many independent Fibonacci tasks).
 
@@ -488,7 +491,7 @@ Run the benchmark with one of the execution modes:
 - 5th arg: number of timed runs (best and average reported)
 - 6th optional arg: recursion split threshold for task spawning (default = 30)
 
-## Run the Fast-Doubling Fibonacci Benchmark "fib_fast_bench.cpp"
+### Run the Fast-Doubling Fibonacci Benchmark "fib_fast_bench.cpp"
 
 This benchmark uses the fast doubling Fibonacci algorithm (`O(log n)`) per task and compares all execution modes on many independent tasks.
 
@@ -512,7 +515,7 @@ Run the benchmark with one of the execution modes:
 - 5th arg: number of timed runs (best and average reported)
 - 6th optional arg: number of tasks submitted per run (default = threads)
 
-## Run All CPU-Bound Workloads and Save CSV
+### Run All CPU-Bound Workloads and Save CSV
 
 Use `run_cpu_workloads.cpp` to build a C++ runner that executes all CPU workloads
 (`matrix`, `fib`, `fib_single`, `fib_fast`) across all pool variants
@@ -574,13 +577,13 @@ CSV includes:
 - `perf` metrics (when available): task-clock, context-switches, cpu-migrations, cycles, instructions, cache-misses.
 
 
-## Mixed Workload Benchmark
+### Mixed Workload Benchmark
 
 This benchmark evaluates the runtime modes under a mixed workload:
 ```
 CPU work → blocking I/O wait → CPU work
 ```
-### How to run the benchmark
+#### How to run the benchmark
 
 Compile the HTTP server:
 ```
@@ -592,7 +595,7 @@ Compile the benchmark client:
 g++ -O2 -std=c++20 -pthread mixed_bench.cpp -o mixed_bench
 ```
 
-### Running the Server
+#### Running the Server
 
 In one terminal, run the server with one of the execution modes:
 ```
@@ -602,7 +605,7 @@ In one terminal, run the server with one of the execution modes:
 ./mini_http_server elastic 8080 4 32
 ./mini_http_server advws   8080 4 32 50
 ```
-### Running the Benchmark
+#### Running the Benchmark
 
 In another terminal:
 ```
@@ -623,9 +626,9 @@ How to Read It:
 - p95/p99 much higher than p50 → queueing and overload.
 - All latencies high and similar → fully overloaded system.
 
-### Install perf and wrk in CloudLab server
+#### Install perf and wrk in CloudLab server
 
-#### perf
+##### perf
 ```
 sudo apt install linux-tools-standard-WSL2 linux-cloud-tools-standard-WSL2
 ```
@@ -641,14 +644,14 @@ like:
 ```
 perf stat ./matrix_mul_bench advws 8000 64 8 1 3
 ```
-#### wrk
+##### wrk
 To install wrk:
 ```
 sudo apt update
 sudo apt install wrk
 ```
 
-### Compare Pools With wrk
+#### Compare Pools With wrk
 
 If you want to drive the HTTP benchmark with `wrk` instead of the custom
 `mixed_bench` client, this repo now includes:
@@ -691,7 +694,7 @@ The CSV captures:
 - socket errors, if any
 - raw log path for each `(mode, preset)` run
 
-## Mixed Workload Benchmark (Matrix-Backed CPU Stages)
+### Mixed Workload Benchmark (Matrix-Backed CPU Stages)
 
 This variant keeps the same HTTP `/work` endpoint shape, but the CPU phases are
 implemented as repeated blocked matrix multiplications instead of busy loops.
@@ -701,7 +704,7 @@ cpu work → blocking I/O wait → cpu work
 ```
 where `cpu1` and `cpu2` are iteration counts for the matrix multiplication kernel.
 
-### How to run the matrix-backed benchmark
+#### How to run the matrix-backed benchmark
 
 Compile the HTTP server:
 ```
@@ -713,7 +716,7 @@ Compile the benchmark client:
 g++ -O2 -std=c++20 -pthread mixed_bench_matmul.cpp -o mixed_bench_matmul
 ```
 
-### Running the Matrix-Backed Server
+#### Running the Matrix-Backed Server
 
 In one terminal, run the server with one of the execution modes:
 ```
@@ -726,7 +729,7 @@ MIXED_MATMUL_N=64 MIXED_MATMUL_BS=32 ./mini_http_server_matmul advws   8080 4 32
 - `MIXED_MATMUL_N`: matrix dimension used inside each CPU stage (default `64`)
 - `MIXED_MATMUL_BS`: blocked matmul tile size (default `32`)
 
-### Running the Matrix-Backed Benchmark Client
+#### Running the Matrix-Backed Benchmark Client
 
 In another terminal:
 ```
@@ -734,7 +737,7 @@ In another terminal:
 ```
 The corresponding arguments are: host port cpu1_iters io_us cpu2_iters concurrency duration_seconds
 
-### Compare Matrix-Backed Modes With wrk
+#### Compare Matrix-Backed Modes With wrk
 
 To sweep all modes and collect `wrk` plus server-side `perf stat` counters:
 ```

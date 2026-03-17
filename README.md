@@ -290,6 +290,10 @@ wrk -t4 -c32 -d10s --latency \
 - The positional values after `--` are `cpu1`, `io`, and `cpu2` for the
   `/work` endpoint parameters.
 
+### Experiment Results
+
+All experiment results, including analysis plots, a summary of the experiment runs with all measured metrics can be found in [Results](./results).
+
 
 ## More Documentation
 
